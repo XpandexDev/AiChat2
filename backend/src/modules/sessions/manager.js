@@ -106,6 +106,58 @@ function messageType(message) {
   return Object.keys(message)[0] || 'unknown';
 }
 
+// --- Reconexión con backoff (C4+C5) ---
+// Reconectar a intervalo fijo bombardea a WhatsApp y arriesga un bloqueo del
+// número. Usamos backoff exponencial con jitter, sin rendirnos nunca para los
+// fallos transitorios (red, timeout, restartRequired) — el objetivo es que una
+// sesión vinculada jamás se quede caída sola.
+const RECONNECT_BASE_MS = 2000;
+const RECONNECT_CAP_MS = 60000;
+// 'loggedOut' lo emite Baileys también por desconexiones espurias. Reintentamos
+// un número limitado de veces (sin borrar creds) para recuperar esos casos; si
+// de verdad está deslogueada, se agotan y queda en auth_failure para que el
+// admin/cliente decida.
+const MAX_LOGGED_OUT_RETRIES = 5;
+const LOGGED_OUT_BASE_MS = 15000;
+
+function computeBackoff(attempt, baseMs, capMs) {
+  const exp = Math.min(baseMs * 2 ** Math.max(0, attempt - 1), capMs);
+  const jitter = Math.random() * 0.3 * exp; // hasta +30% para desincronizar reintentos
+  return Math.round(exp + jitter);
+}
+
+function clearReconnectTimer(session) {
+  if (session && session.reconnectTimer) {
+    clearTimeout(session.reconnectTimer);
+    session.reconnectTimer = null;
+  }
+}
+
+function scheduleReconnect(session, { reasonName, baseMs, capMs, attemptKey }) {
+  const current = sessions.get(session.sessionId);
+  if (!current || current.status === 'stopped') return;
+
+  session[attemptKey] = (session[attemptKey] || 0) + 1;
+  const delay = computeBackoff(session[attemptKey], baseMs, capMs);
+
+  updateSession(session.sessionId, {
+    status: 'disconnected',
+    connectedNumber: null,
+    lastError: `Desconectado (${reasonName}). Reintento ${session[attemptKey]} en ${Math.round(delay / 1000)}s…`,
+  });
+
+  clearReconnectTimer(session);
+  session.reconnectTimer = setTimeout(() => {
+    const cur = sessions.get(session.sessionId);
+    if (!cur || cur.status === 'stopped') return; // parada mientras esperábamos
+    connectSocket(session).catch((err) => {
+      // El fallo al reconectar tampoco es terminal: reprogramamos con el mismo
+      // contador para que el backoff siga creciendo.
+      scheduleReconnect(session, { reasonName: `error: ${err.message}`, baseMs, capMs, attemptKey });
+    });
+  }, delay);
+}
+
 async function connectSocket(session) {
   const baileys = await baileysPromise;
   // En distintas versiones Baileys exporta makeWASocket de formas distintas:
@@ -168,6 +220,10 @@ async function connectSocket(session) {
     if (connection === 'open') {
       const rawId = sock.user?.id || '';
       const connectedNumber = rawId.split(':')[0].split('@')[0] || null;
+      // Conexión sana: reseteamos los contadores de backoff.
+      session.reconnectAttempts = 0;
+      session.loggedOutRetries = 0;
+      clearReconnectTimer(session);
       updateSession(session.sessionId, {
         status: 'ready',
         qrDataUrl: null,
@@ -182,48 +238,51 @@ async function connectSocket(session) {
         || `status ${statusCode ?? 'desconocido'}`;
       const loggedOut = statusCode === DisconnectReason.loggedOut;
       const current = sessions.get(session.sessionId);
-
       const replaced = statusCode === DisconnectReason.connectionReplaced;
 
-      if (loggedOut) {
-        // IMPORTANTE: NO borramos los creds de disco aquí. Baileys reporta
-        // 'loggedOut' a veces por desconexiones espurias, no solo cuando
-        // realmente se desvincula el dispositivo. Borrar los creds
-        // automáticamente obligaba a re-escanear QR sin razón.
-        // Si los creds son inválidos de verdad, el siguiente "Start" fallará
-        // y se mostrará auth_failure → el usuario decide borrar desde el panel.
-        updateSession(session.sessionId, {
-          status: 'auth_failure',
-          connectedNumber: null,
-          qrDataUrl: null,
-          lastError: `Sesión rechazada por WhatsApp (${reasonName}). Pulsa "Iniciar" para reintentar o "Eliminar" para vincular un número nuevo.`,
-        });
-        session.sock = null;
-      } else if (replaced) {
-        // Otro proceso (otro worker de Passenger o WhatsApp Web en navegador)
-        // tomó la sesión. NO reconectar — sería un ping-pong infinito que
-        // arruina los contadores de Signal Protocol. Solo dejamos al otro
-        // proceso continuar.
+      if (replaced) {
+        // Otro proceso (otro worker o WhatsApp Web en navegador) tomó la sesión.
+        // NO reconectar — sería un ping-pong infinito que arruina los contadores
+        // de Signal Protocol. Dejamos al otro proceso continuar.
+        clearReconnectTimer(session);
         updateSession(session.sessionId, {
           status: 'stopped',
           connectedNumber: null,
           lastError: 'Otro proceso o navegador tomó la sesión (connectionReplaced). Si fue accidental, pulsa "Iniciar".',
         });
         session.sock = null;
-      } else if (current && current.status !== 'stopped') {
-        updateSession(session.sessionId, {
-          status: 'disconnected',
-          connectedNumber: null,
-          lastError: `Desconectado: ${reasonName}. Reconectando...`,
-        });
-        setTimeout(() => {
-          connectSocket(session).catch((err) => {
-            updateSession(session.sessionId, {
-              status: 'error',
-              lastError: `Fallo al reconectar: ${err.message}`,
-            });
+      } else if (loggedOut) {
+        // NO borramos los creds: Baileys reporta 'loggedOut' también por
+        // desconexiones espurias. Reintentamos un número limitado de veces con
+        // backoff largo para recuperar esos casos. Solo si se agotan dejamos la
+        // sesión en auth_failure (probable deslogueo real).
+        session.sock = null;
+        if ((session.loggedOutRetries || 0) < MAX_LOGGED_OUT_RETRIES && current && current.status !== 'stopped') {
+          scheduleReconnect(session, {
+            reasonName: `${reasonName} (posible espurio)`,
+            baseMs: LOGGED_OUT_BASE_MS,
+            capMs: RECONNECT_CAP_MS,
+            attemptKey: 'loggedOutRetries',
           });
-        }, 2000);
+        } else {
+          clearReconnectTimer(session);
+          updateSession(session.sessionId, {
+            status: 'auth_failure',
+            connectedNumber: null,
+            qrDataUrl: null,
+            lastError: `Sesión rechazada por WhatsApp (${reasonName}) tras varios reintentos. Pulsa "Iniciar" para reintentar o "Eliminar" para vincular un número nuevo.`,
+          });
+        }
+      } else if (current && current.status !== 'stopped') {
+        // Desconexión transitoria (red, timeout, restartRequired): reconexión
+        // con backoff exponencial + jitter, sin rendirnos.
+        session.sock = null;
+        scheduleReconnect(session, {
+          reasonName,
+          baseMs: RECONNECT_BASE_MS,
+          capMs: RECONNECT_CAP_MS,
+          attemptKey: 'reconnectAttempts',
+        });
       }
     }
   });
@@ -395,6 +454,9 @@ async function stopSession(sessionId) {
     return result.affectedRows > 0;
   }
 
+  // Cancelar cualquier reintento pendiente para que no reviva la sesión parada.
+  clearReconnectTimer(session);
+
   try {
     if (session.sock) session.sock.end(undefined);
   } catch (error) {
@@ -414,6 +476,7 @@ async function stopSession(sessionId) {
 async function deleteSession(sessionId) {
   const session = sessions.get(sessionId);
 
+  if (session) clearReconnectTimer(session);
   if (session?.sock) {
     try { await session.sock.logout(); } catch { /* ignore */ }
     try { session.sock.end(undefined); } catch { /* ignore */ }
@@ -445,6 +508,7 @@ async function dropSessionsForClient(clientId) {
   let count = 0;
   for (const { session_id: sid } of rows) {
     const session = sessions.get(sid);
+    if (session) clearReconnectTimer(session);
     if (session?.sock) {
       try { await session.sock.logout(); } catch { /* ignore */ }
       try { session.sock.end(undefined); } catch { /* ignore */ }
@@ -553,9 +617,12 @@ async function resumeSessions() {
     return;
   }
   try {
+    // Incluimos auth_failure/error: tras un restart reintentamos también las que
+    // cayeron por fallos espurios (un intento las recupera; si están deslogueadas
+    // de verdad vuelven a auth_failure). Solo 'stopped' queda fuera: es voluntario.
     const [rows] = await pool.execute(
       `SELECT client_id, session_id FROM wa_sessions
-       WHERE status IN ('ready', 'authenticated', 'starting', 'waiting_qr_scan', 'disconnected')
+       WHERE status IN ('ready', 'authenticated', 'starting', 'waiting_qr_scan', 'disconnected', 'auth_failure', 'error')
        ORDER BY updated_at DESC`,
     );
     if (rows.length === 0) {

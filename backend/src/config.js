@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 const dotenv = require('dotenv');
 
 // override:true es crítico — Hostinger/Passenger inyecta env vars cacheadas que
@@ -48,6 +49,54 @@ if (missing.length > 0) {
 
 console.log('Env vars requeridas: OK');
 
+// --- Resolución del directorio de credenciales Baileys (CRÍTICO) ---
+// Las credenciales de WhatsApp viven aquí. Si la ruta cambia entre arranques
+// (p.ej. por ser relativa a un process.cwd() distinto) Baileys no las encuentra
+// y TODOS los clientes tienen que re-escanear el QR. Por eso:
+//   1. La normalizamos SIEMPRE a una ruta absoluta y determinista.
+//   2. Las rutas relativas se anclan a la raíz del backend (no a process.cwd(),
+//      que aaPanel/Passenger pueden cambiar entre versiones).
+//   3. Avisamos a gritos si la ruta cae dentro de un repo git: un `git clean -fd`
+//      o un track accidental borraría todas las sesiones en el próximo deploy.
+function resolveAuthDataPath() {
+  const raw = process.env.AUTH_DATA_PATH || '';
+  // Ancla estable para rutas relativas: la carpeta que contiene src/ (backend
+  // en dev, APP_DIR en deploy), nunca process.cwd().
+  const anchor = path.resolve(__dirname, '..');
+  const resolved = raw
+    ? path.resolve(anchor, raw)
+    : path.resolve(anchor, '.baileys_auth');
+  return resolved;
+}
+
+function isInsideGitRepo(dir) {
+  let current = dir;
+  for (let i = 0; i < 30; i += 1) {
+    if (fs.existsSync(path.join(current, '.git'))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return null;
+}
+
+const AUTH_DATA_PATH = resolveAuthDataPath();
+console.log(`AUTH_DATA_PATH (absoluto): ${AUTH_DATA_PATH}`);
+if (!process.env.AUTH_DATA_PATH) {
+  console.warn('AVISO: AUTH_DATA_PATH no está definido en el entorno; usando default. '
+    + 'En producción defínelo a una ruta absoluta FUERA del directorio de deploy.');
+}
+const gitRoot = isInsideGitRepo(AUTH_DATA_PATH);
+if (gitRoot) {
+  console.warn('==========================================');
+  console.warn('AVISO CRÍTICO: AUTH_DATA_PATH está dentro de un repo git:');
+  console.warn(`  auth: ${AUTH_DATA_PATH}`);
+  console.warn(`  repo: ${gitRoot}`);
+  console.warn('Un "git clean -fd" o un track accidental BORRARÍA todas las');
+  console.warn('sesiones de WhatsApp en el próximo deploy. Muévelo fuera del repo.');
+  console.warn('==========================================');
+}
+
 module.exports = {
   PORT: Number(process.env.PORT || 3000),
   CORS_ORIGINS: (process.env.CORS_ORIGIN || 'http://localhost:4200,http://127.0.0.1:4200')
@@ -62,5 +111,5 @@ module.exports = {
   SESSION_SECRET: process.env.SESSION_SECRET,
   WEBHOOK_INCOMING_URL: process.env.WEBHOOK_INCOMING_URL || '',
   WEBHOOK_SECRET: process.env.WEBHOOK_SECRET || '',
-  AUTH_DATA_PATH: process.env.AUTH_DATA_PATH || path.resolve(__dirname, '..', '.baileys_auth'),
+  AUTH_DATA_PATH,
 };

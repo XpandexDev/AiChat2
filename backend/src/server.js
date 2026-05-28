@@ -83,16 +83,37 @@ process.on('SIGTERM', () => { console.error('Recibido SIGTERM'); process.exit(0)
 process.on('uncaughtException', (error) => console.error('uncaughtException:', error));
 process.on('unhandledRejection', (reason) => console.error('unhandledRejection:', reason));
 
-async function startServer() {
-  try {
-    console.log('Running database migrations...');
-    await runMigrations();
-    await bootstrapFirstAdmin();
-    await authService.cleanupExpiredSessions();
-  } catch (error) {
-    console.error('Startup DB step failed:', error.message);
-    process.exit(1);
+// Tras un reboot del VPS, MySQL puede tardar en aceptar conexiones. Si
+// abortáramos al primer fallo (process.exit), aaPanel reiniciaría en bucle y
+// NINGUNA sesión de WhatsApp reconectaría hasta que la BD respondiese. En su
+// lugar reintentamos con backoff durante varios minutos; solo si la BD nunca
+// vuelve salimos para que el supervisor reinicie de forma limpia.
+async function initDbWithRetry() {
+  const maxAttempts = 30;          // ~10 min con el backoff de abajo
+  const baseDelayMs = 2000;
+  const capMs = 30000;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      console.log(`Running database migrations... (intento ${attempt}/${maxAttempts})`);
+      await runMigrations();
+      await bootstrapFirstAdmin();
+      await authService.cleanupExpiredSessions();
+      return;
+    } catch (error) {
+      const delay = Math.min(baseDelayMs * 2 ** (attempt - 1), capMs);
+      console.error(`Startup DB step failed (intento ${attempt}): ${error.message}`);
+      if (attempt === maxAttempts) {
+        console.error('BD no disponible tras todos los reintentos. Saliendo para reinicio limpio.');
+        process.exit(1);
+      }
+      console.error(`Reintentando en ${Math.round(delay / 1000)}s…`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
   }
+}
+
+async function startServer() {
+  await initDbWithRetry();
 
   // Re-arranca sesiones WA que estaban vivas antes del último restart.
   // No bloquea el listen: cada reconexión va en su propia promise.

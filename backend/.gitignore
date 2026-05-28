@@ -2,4 +2,7 @@ node_modules
 .env
 .wwebjs_auth
 .wwebjs_cache
+# Credenciales Baileys — NUNCA versionar (cualquier variante de nombre)
 .baileys_auth
+.baileys_auth_data
+*.baileys_auth*

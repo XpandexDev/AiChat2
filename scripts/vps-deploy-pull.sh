@@ -16,11 +16,27 @@ APP_DIR="/www/wwwroot/AiChat"
 DEPLOY_BRANCH="deploy"
 PID_FILE="/www/server/nodejs/vhost/pids/AiChat.pid"
 STARTUP_SCRIPT="/www/server/nodejs/vhost/scripts/AiChat.sh"
-LOCK_FILE="$APP_DIR/.baileys_auth_data/resumer.lock"
 
 echo "==> [vps-deploy-pull] $(date -u +%FT%TZ)"
 
 cd "$APP_DIR"
+
+# Derivar AUTH_DATA_PATH del .env para localizar el resumer.lock real y para
+# verificar que las credenciales NO viven dentro del repo (un git reset/clean
+# las borraría y todos los clientes tendrían que re-escanear el QR).
+AUTH_DATA_PATH=$(grep -E '^AUTH_DATA_PATH=' .env 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'" || echo "")
+if [ -z "$AUTH_DATA_PATH" ]; then
+  echo "!! AVISO: AUTH_DATA_PATH no está en $APP_DIR/.env — usando fallback dentro del repo (PELIGROSO)." >&2
+  AUTH_DATA_PATH="$APP_DIR/.baileys_auth_data"
+fi
+case "$AUTH_DATA_PATH" in
+  "$APP_DIR"/*|"$APP_DIR")
+    echo "!! AVISO CRÍTICO: AUTH_DATA_PATH ($AUTH_DATA_PATH) está dentro del dir de deploy." >&2
+    echo "!! Muévelo fuera (p.ej. /www/wwwroot/AiChat-data/baileys_auth) para que ningún" >&2
+    echo "!! 'git reset --hard'/'git clean' borre las sesiones de WhatsApp." >&2
+    ;;
+esac
+LOCK_FILE="$AUTH_DATA_PATH/resumer.lock"
 
 echo "==> git fetch + reset a origin/$DEPLOY_BRANCH"
 PRE_HASH_PKG=$(sha256sum package.json 2>/dev/null | awk '{print $1}' || echo "")

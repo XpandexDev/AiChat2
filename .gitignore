@@ -1,2 +1,9 @@
 deploy/
 
+# Credenciales Baileys / sesiones WhatsApp — NUNCA versionar.
+# Si el directorio de auth quedara dentro del repo, un git clean/reset lo borraría.
+.baileys_auth
+.baileys_auth_data
+.wwebjs_auth
+.wwebjs_cache
+*.baileys_auth*
