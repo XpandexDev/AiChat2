@@ -16,7 +16,7 @@ DEPLOY_DIR="$ROOT_DIR/deploy"
 WORKTREE_DIR="/private/tmp/$(basename "$ROOT_DIR")-deploy-worktree"
 DEPLOY_BRANCH="deploy"
 BASE_BRANCH="main"
-VPS_HOST="${VPS_HOST:-root@5.180.173.8}"
+VPS_HOST="${VPS_HOST:-root@151.241.216.125}"
 VPS_APP_DIR="${VPS_APP_DIR:-/www/wwwroot/AiChat}"
 
 echo "==> Building frontend into $DEPLOY_DIR"
