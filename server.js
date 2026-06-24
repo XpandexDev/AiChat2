@@ -10,6 +10,7 @@ const config = require('./config');
 const { runMigrations } = require('./db/migrate');
 const { bootstrapFirstAdmin } = require('./db/bootstrap');
 const authService = require('./modules/auth/service');
+const clientAuthService = require('./modules/client-auth/service');
 
 const authRoutes = require('./modules/auth/routes');
 const auditRoutes = require('./modules/audit/routes');
@@ -19,6 +20,8 @@ const messagesRoutes = require('./modules/sessions/messages-routes');
 const sessionsManager = require('./modules/sessions/manager');
 const webhookRoutes = require('./modules/webhooks/routes');
 const pairingRoutes = require('./modules/pairing/routes');
+const clientAuthRoutes = require('./modules/client-auth/routes');
+const clientPanelRoutes = require('./modules/client-panel/routes');
 
 console.log('Iniciando app Node...');
 
@@ -61,6 +64,10 @@ app.use('/api/sessions', sessionsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/pairing', pairingRoutes);
+// Panel self-service por cliente. El específico (/api/client/auth) ANTES del
+// genérico (/api/client), y ambos antes del catch-all del SPA.
+app.use('/api/client/auth', clientAuthRoutes);
+app.use('/api/client', clientPanelRoutes);
 
 sessionsManager.init(io);
 
@@ -98,6 +105,7 @@ async function initDbWithRetry() {
       await runMigrations();
       await bootstrapFirstAdmin();
       await authService.cleanupExpiredSessions();
+      await clientAuthService.cleanupExpiredSessions();
       return;
     } catch (error) {
       const delay = Math.min(baseDelayMs * 2 ** (attempt - 1), capMs);

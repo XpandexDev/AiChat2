@@ -1,6 +1,7 @@
 const express = require('express');
 const clientsService = require('./service');
 const sessionsManager = require('../sessions/manager');
+const blacklist = require('../blacklist/service');
 const { requireAdmin } = require('../../middleware/auth');
 const { auditLog } = require('../../middleware/audit');
 
@@ -68,6 +69,23 @@ router.post('/:id/pairing/regenerate', async (req, res) => {
   }
 });
 
+// Asignar/resetear la contraseña del panel del cliente (admin la define).
+router.post('/:id/password', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
+  const password = String(req.body?.password || '');
+  try {
+    const updated = await clientsService.setClientPassword(id, password);
+    if (!updated) return res.status(404).json({ error: 'Cliente no encontrado' });
+    // Nunca registrar la contraseña en el audit log.
+    auditLog(req.adminId, 'client.set_password', 'client', String(id), {}, req).catch(() => {});
+    return res.json({ ok: true, passwordConfigured: updated.passwordConfigured });
+  } catch (error) {
+    if (error.code === 'VALIDATION') return res.status(400).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
@@ -82,6 +100,46 @@ router.delete('/:id', async (req, res) => {
 
     auditLog(req.adminId, 'client.delete', 'client', String(id), { sessionsDropped: dropped }, req).catch(() => {});
     return res.json({ ok: true, sessionsDropped: dropped });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Blacklist (números sin bot) de un cliente, gestionada por el admin ---
+router.get('/:id/blacklist', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
+  try {
+    return res.json(await blacklist.list(id));
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/blacklist', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
+  const jid = sessionsManager.normalizeJid(req.body?.number);
+  if (!jid) return res.status(400).json({ error: 'Número inválido. Usa formato internacional, p.ej. 34600111222' });
+  try {
+    const list = await blacklist.add(id, jid, req.body?.note);
+    auditLog(req.adminId, 'client.blacklist_add', 'client', String(id), { number: jid }, req).catch(() => {});
+    return res.json(list);
+  } catch (error) {
+    if (error.code === 'VALIDATION') return res.status(400).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/:id/blacklist', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
+  const jid = sessionsManager.normalizeJid(req.query?.number || req.body?.number);
+  if (!jid) return res.status(400).json({ error: 'Número inválido' });
+  try {
+    const list = await blacklist.remove(id, jid);
+    auditLog(req.adminId, 'client.blacklist_remove', 'client', String(id), { number: jid }, req).catch(() => {});
+    return res.json(list);
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

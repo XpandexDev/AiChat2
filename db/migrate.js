@@ -48,7 +48,19 @@ async function runMigrations() {
       const statements = splitStatements(sql);
       console.log(`Running migration: ${file} (${statements.length} statements)`);
       for (const stmt of statements) {
-        await connection.query(stmt);
+        try {
+          await connection.query(stmt);
+        } catch (err) {
+          // Idempotencia defensiva: si un fichero se re-ejecuta porque un statement
+          // posterior falló (y no se marcó como aplicado), un ALTER ADD ya aplicado
+          // devolvería "Duplicate column/key". Lo toleramos para no dejar el arranque
+          // en bucle de fallo permanente (process.exit) — el resto de errores SÍ se propagan.
+          if (err && (err.errno === 1060 || err.errno === 1061)) { // ER_DUP_FIELDNAME / ER_DUP_KEYNAME
+            console.warn(`  (omitido: ${err.code || err.errno} — ya aplicado) ${stmt.slice(0, 60)}…`);
+          } else {
+            throw err;
+          }
+        }
       }
       await connection.execute(
         'INSERT INTO migrations_applied (filename) VALUES (?)',

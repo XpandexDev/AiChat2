@@ -1,9 +1,13 @@
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const pool = require('../../db/pool');
+
+const BCRYPT_ROUNDS = 12;
 
 const SELECT_FIELDS = `
   id, name, email, phone, description, is_active,
   tags, webhook_incoming_url, webhook_secret, pairing_token,
+  password_hash, bot_enabled, schedule_enabled, timezone, auto_reply_text,
   created_by, created_at, updated_at
 `;
 
@@ -20,6 +24,11 @@ function rowToClient(row) {
     webhookIncomingUrl: row.webhook_incoming_url,
     webhookSecretConfigured: Boolean(row.webhook_secret),
     pairingToken: row.pairing_token,
+    passwordConfigured: Boolean(row.password_hash),
+    botEnabled: Boolean(row.bot_enabled),
+    scheduleEnabled: Boolean(row.schedule_enabled),
+    timezone: row.timezone,
+    autoReplyText: row.auto_reply_text,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -171,6 +180,23 @@ async function updateClient(id, input) {
   return getClient(id);
 }
 
+// Asigna/resetea la contraseña del panel del cliente (la pone el admin).
+// Al cambiarla, cierra todas las sesiones de panel abiertas del cliente.
+async function setClientPassword(id, plainPassword) {
+  const pwd = String(plainPassword || '');
+  if (pwd.length < 8) {
+    const e = new Error('La contraseña debe tener al menos 8 caracteres');
+    e.code = 'VALIDATION';
+    throw e;
+  }
+  const current = await getClient(id);
+  if (!current) return null;
+  const hash = await bcrypt.hash(pwd, BCRYPT_ROUNDS);
+  await pool.execute('UPDATE clients SET password_hash = ? WHERE id = ?', [hash, id]);
+  await pool.execute('DELETE FROM client_sessions WHERE client_id = ?', [id]).catch(() => {});
+  return getClient(id);
+}
+
 async function deleteClient(id) {
   // Las sesiones de WA se borran por ON DELETE CASCADE. El caller (routes)
   // se encarga de cerrar/limpiar los ficheros de auth en disco antes.
@@ -203,4 +229,5 @@ module.exports = {
   deleteClient,
   regeneratePairingToken,
   findByPairingToken,
+  setClientPassword,
 };

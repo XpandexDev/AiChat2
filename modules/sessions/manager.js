@@ -6,6 +6,8 @@ const config = require('../../config');
 const pool = require('../../db/pool');
 const webhooks = require('../webhooks/service');
 const handoff = require('../handoff/service');
+const blacklist = require('../blacklist/service');
+const { isBotActive } = require('../../lib/bot-schedule');
 
 const baileysPromise = import('@whiskeysockets/baileys');
 const baileysLogger = pino({ level: 'silent' });
@@ -46,6 +48,76 @@ function emitSessionUpdate(sessionId) {
 function emit(event, data) {
   if (io) io.emit(event, data);
 }
+
+// --- Estado "bot activo" por cliente (on/off manual + horario semanal) ---
+// Cache en memoria con TTL corto para no pegar a BD en cada mensaje entrante.
+// El cooldown evita spamear el aviso automático al mismo contacto fuera de horario.
+// (App single-process: un aviso duplicado tras un reinicio es inocuo.)
+const BOT_STATE_TTL_MS = 30000;
+const AUTO_REPLY_COOLDOWN_MS = 60 * 60 * 1000; // 1h
+const botStateCache = new Map();    // clientId -> { value, expiresAt }
+const autoReplyCooldown = new Map(); // `${clientId}:${jid}` -> timestamp
+
+async function getBotState(clientId) {
+  const cached = botStateCache.get(clientId);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const [[c]] = await pool.execute(
+    'SELECT bot_enabled, schedule_enabled, timezone, auto_reply_text FROM clients WHERE id = ?',
+    [clientId],
+  );
+  let value = null;
+  if (c) {
+    const [windows] = await pool.execute(
+      "SELECT weekday, TIME_FORMAT(start_time,'%H:%i') AS start, TIME_FORMAT(end_time,'%H:%i') AS end "
+      + 'FROM client_schedule WHERE client_id = ?',
+      [clientId],
+    );
+    value = {
+      bot_enabled: !!c.bot_enabled,
+      schedule_enabled: !!c.schedule_enabled,
+      timezone: c.timezone,
+      auto_reply_text: c.auto_reply_text,
+      windows,
+    };
+  }
+  botStateCache.set(clientId, { value, expiresAt: Date.now() + BOT_STATE_TTL_MS });
+  return value;
+}
+
+// Invalida la cache de un cliente (lo llama el panel al togglear el bot o guardar horario).
+function invalidateBotState(clientId) {
+  botStateCache.delete(clientId);
+}
+
+function autoReplyKey(clientId, jid) {
+  return `${clientId}:${jid}`;
+}
+
+// Peek SIN mutar: ¿toca enviar el aviso a este contacto? (cooldown no vencido → no).
+// Purga perezosa la entrada vencida que se consulta.
+function canSendAutoReply(clientId, jid) {
+  const key = autoReplyKey(clientId, jid);
+  const last = autoReplyCooldown.get(key);
+  if (last == null) return true;
+  if (Date.now() - last < AUTO_REPLY_COOLDOWN_MS) return false;
+  autoReplyCooldown.delete(key); // vencida: la limpiamos
+  return true;
+}
+
+// Marca el cooldown SOLO tras un envío exitoso (un envío fallido no bloquea el reintento).
+function markAutoReplySent(clientId, jid) {
+  autoReplyCooldown.set(autoReplyKey(clientId, jid), Date.now());
+}
+
+// Barrido periódico para que autoReplyCooldown no crezca sin límite (contactos
+// que escriben una vez fuera de horario y nunca más). unref() para no bloquear el cierre.
+const autoReplySweep = setInterval(() => {
+  const now = Date.now();
+  for (const [key, ts] of autoReplyCooldown) {
+    if (now - ts > AUTO_REPLY_COOLDOWN_MS) autoReplyCooldown.delete(key);
+  }
+}, AUTO_REPLY_COOLDOWN_MS);
+if (autoReplySweep.unref) autoReplySweep.unref();
 
 function updateSession(sessionId, patch) {
   const session = sessions.get(sessionId);
@@ -317,6 +389,16 @@ async function connectSocket(session) {
 
       if (io) io.emit('message:incoming', payload);
 
+      // Blacklist: números marcados como "sin bot" (cliente/admin) → silencio
+      // total. El bot los ignora por completo: ni reenvío a n8n ni aviso.
+      let isBlocked = false;
+      try {
+        isBlocked = await blacklist.isBlacklisted(session.clientId, normalizeJid(payload.message.from));
+      } catch (e) {
+        isBlocked = false; // fail-open
+      }
+      if (isBlocked) continue;
+
       // Handoff: si el contacto está en modo humano, el bot calla — no reenviamos
       // a n8n ni auto-respondemos. El panel ya ha visto el mensaje (emit de arriba)
       // y un humano lo atiende. Fail-open: si la BD falla, el bot sigue operando.
@@ -327,6 +409,37 @@ async function connectSocket(session) {
         handoffPaused = false;
       }
       if (handoffPaused) continue;
+
+      // Bot apagado (manual) o fuera de horario: el bot no responde y, con
+      // cooldown por contacto, envía UN aviso automático si está configurado.
+      let botState = null;
+      try {
+        botState = await getBotState(session.clientId);
+      } catch (e) {
+        botState = null; // fail-open: si la BD falla, el bot sigue operando
+      }
+      if (botState && !isBotActive(botState, new Date())) {
+        const offJid = normalizeJid(payload.message.from);
+        if (botState.auto_reply_text && offJid && !offJid.endsWith('@g.us')
+            && session.sock && canSendAutoReply(session.clientId, offJid)) {
+          try {
+            const sent = await session.sock.sendMessage(offJid, { text: botState.auto_reply_text });
+            // Marca el cooldown SOLO tras enviar con éxito (un fallo no bloquea el reintento).
+            markAutoReplySent(session.clientId, offJid);
+            if (io) io.emit('message:outgoing', {
+              type: 'outgoing_message',
+              source: 'auto-reply',
+              sessionId: session.sessionId,
+              clientId: session.clientId,
+              timestamp: new Date().toISOString(),
+              message: { id: sent?.key?.id || null, to: offJid, body: botState.auto_reply_text },
+            });
+          } catch (err) {
+            console.error('auto-reply error:', err.message);
+          }
+        }
+        continue; // no reenvía a n8n
+      }
 
       try {
         const reply = await webhooks.forwardIncoming(session.clientId, payload, {
@@ -743,4 +856,5 @@ module.exports = {
   resumeSessions,
   normalizeJid,
   emit,
+  invalidateBotState,
 };
