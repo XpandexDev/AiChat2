@@ -30,6 +30,7 @@ const optionalVars = [
   'WEBHOOK_INCOMING_URL',
   'WEBHOOK_SECRET',
   'AUTH_DATA_PATH',
+  'HANDOFF_TTL_MINUTES',
 ];
 
 // Loguea explícitamente para que Hostinger lo capture en console.log
@@ -112,4 +113,7 @@ module.exports = {
   WEBHOOK_INCOMING_URL: process.env.WEBHOOK_INCOMING_URL || '',
   WEBHOOK_SECRET: process.env.WEBHOOK_SECRET || '',
   AUTH_DATA_PATH,
+  // Minutos hasta que un handoff expira solo (rearme perezoso). Vacío/0 = sin
+  // expiración: el bot solo vuelve cuando un humano pulsa "Devolver al bot".
+  HANDOFF_TTL_MINUTES: process.env.HANDOFF_TTL_MINUTES ? Number(process.env.HANDOFF_TTL_MINUTES) : null,
 };

@@ -102,7 +102,15 @@ async function forwardIncoming(clientId, payload, extras = {}) {
   });
 
   if (response?.data?.to && response?.data?.text) {
-    return { to: String(response.data.to), text: String(response.data.text) };
+    const out = { to: String(response.data.to), text: String(response.data.text) };
+    // Señal de handoff: si n8n la incluye, la propagamos sin romper el contrato
+    // {to,text}. El handoff SIEMPRE acompaña un texto (el "te atiende una persona").
+    if (response.data.handoff === true || response.data.handoff === 'true') {
+      out.handoff = true;
+      out.handoff_motivo = response.data.handoff_motivo ? String(response.data.handoff_motivo) : null;
+      out.handoff_resumen = response.data.handoff_resumen ? String(response.data.handoff_resumen) : null;
+    }
+    return out;
   }
   return null;
 }

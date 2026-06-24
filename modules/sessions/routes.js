@@ -1,5 +1,6 @@
 const express = require('express');
 const manager = require('./manager');
+const handoff = require('../handoff/service');
 const { requireAdmin } = require('../../middleware/auth');
 const { auditLog } = require('../../middleware/audit');
 
@@ -17,6 +18,36 @@ router.get('/', (req, res) => {
     return;
   }
   res.json(manager.listSessions());
+});
+
+// --- Handoff a humano ---
+// Contactos en modo humano, para hidratar el panel al cargar.
+// (Antes de /:sessionId para que "handoff" no se interprete como un sessionId.)
+router.get('/handoff', async (req, res) => {
+  const clientId = req.query.clientId ? Number(req.query.clientId) : null;
+  try {
+    const list = await handoff.listActive(clientId);
+    return res.json(list);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Devolver el control al bot para un contacto.
+router.post('/contact/resume', async (req, res) => {
+  const clientId = Number(req.body?.clientId);
+  const contactJid = manager.normalizeJid(req.body?.contactJid);
+  if (!Number.isInteger(clientId) || clientId <= 0 || !contactJid) {
+    return res.status(400).json({ error: 'clientId y contactJid válidos son requeridos' });
+  }
+  try {
+    const ok = await handoff.resume(clientId, contactJid);
+    auditLog(req.adminId, 'handoff.resume', 'client', String(clientId), { contactJid }, req).catch(() => {});
+    manager.emit('handoff:resumed', { clientId, contactJid, timestamp: new Date().toISOString() });
+    return res.json({ ok });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 router.get('/:sessionId', (req, res) => {
