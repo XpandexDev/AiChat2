@@ -1,0 +1,156 @@
+@if (error(); as msg) {
+  <p class="error-banner">{{ msg }}</p>
+}
+@if (notice(); as msg) {
+  <p class="success-banner">{{ msg }}</p>
+}
+
+@if (me(); as c) {
+  <section class="card">
+    <div class="card-head">
+      <h2>Estado del bot</h2>
+      <span class="badge {{ c.botEnabled ? 'ok' : 'mute' }}">{{ c.botEnabled ? 'Activo' : 'Desactivado' }}</span>
+    </div>
+    <p class="muted" style="margin-top:4px;font-size:.9rem">
+      Mientras el bot está desactivado (o fuera de tu horario), no responde automáticamente y, si lo configuras, envía tu aviso.
+    </p>
+    <div class="form-actions" style="margin-top:12px">
+      <button class="primary" (click)="toggleBot()" [disabled]="savingBot()">
+        {{ c.botEnabled ? 'Desactivar bot' : 'Activar bot' }}
+      </button>
+    </div>
+
+    <h3 style="margin-top:20px">Conexión de WhatsApp</h3>
+    @if (!sessions().length) {
+      <div class="empty" style="margin-top:8px">
+        <p>Sin sesiones conectadas</p>
+        <span>Vincula tu WhatsApp desde el botón de activación.</span>
+      </div>
+    } @else {
+      <table class="data" style="margin-top:8px">
+        <thead><tr><th>Sesión</th><th>Estado</th><th>Número</th></tr></thead>
+        <tbody>
+          @for (s of sessions(); track s.sessionId) {
+            <tr>
+              <td class="mono">{{ s.sessionId }}</td>
+              <td><span class="badge {{ statusVariant(s.status) }}">{{ statusLabel(s.status) }}</span></td>
+              <td>{{ s.connectedNumber || '—' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </section>
+
+  <section class="card">
+    <h2>Activación de WhatsApp</h2>
+    <p class="muted" style="margin-top:4px;font-size:.9rem">
+      Abre tu página de activación para escanear el QR y vincular tu número.
+    </p>
+    @if (activationUrl()) {
+      <div class="form-actions" style="margin-top:12px">
+        <a class="primary as-button" [href]="activationUrl()" target="_blank" rel="noopener">Ir a mi activación</a>
+      </div>
+    } @else {
+      <p class="muted" style="margin-top:12px">Tu enlace de activación aún no está disponible. Contacta con soporte.</p>
+    }
+  </section>
+
+  <section class="card">
+    <h2>Horario del bot</h2>
+    <div class="sched-top">
+      <label class="inline">
+        <input type="checkbox" [(ngModel)]="scheduleEnabled" />
+        Aplicar horario
+      </label>
+      <label>
+        Zona horaria
+        <select [(ngModel)]="timezone">
+          @for (tz of timezones; track tz) {
+            <option [value]="tz">{{ tz }}</option>
+          }
+        </select>
+      </label>
+    </div>
+    <p class="muted" style="font-size:.85rem">
+      Las horas se interpretan en la hora local de la zona seleccionada. Si "Aplicar horario" está desactivado, el bot responde 24/7.
+      Para que una franja llegue hasta medianoche, pon <strong>00:00</strong> como hora de fin.
+    </p>
+
+    <div class="days">
+      @for (d of days(); track d.weekday) {
+        <div class="day-row">
+          <span class="day-label">{{ d.label }}</span>
+          <div class="windows">
+            @if (!d.windows.length) {
+              <span class="dim">— sin franjas —</span>
+            }
+            @for (w of d.windows; track $index) {
+              <span class="window">
+                <input type="time" [(ngModel)]="w.start" />
+                <span class="sep">–</span>
+                <input type="time" [(ngModel)]="w.end" />
+                <button type="button" class="ghost mini" (click)="removeWindow(d.weekday, $index)" title="Quitar franja">✕</button>
+              </span>
+            }
+            <button type="button" class="ghost mini" (click)="addWindow(d.weekday)">+ franja</button>
+          </div>
+        </div>
+      }
+    </div>
+
+    <label style="margin-top:16px;display:block">
+      Aviso automático (fuera de horario / bot desactivado)
+      <textarea rows="3" [(ngModel)]="autoReplyText"
+        placeholder="Gracias por tu mensaje. Te responderemos en nuestro horario de atención."></textarea>
+    </label>
+
+    <div class="form-actions" style="margin-top:14px">
+      <button class="primary" (click)="saveSchedule()" [disabled]="savingSchedule()">
+        {{ savingSchedule() ? 'Guardando...' : 'Guardar horario' }}
+      </button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Números sin bot</h2>
+    <p class="muted" style="margin-top:4px;font-size:.9rem">
+      El bot ignora por completo a estos números (no responde nada). Útil para contactos que no deben recibir respuestas automáticas.
+    </p>
+    <div class="form-grid" style="margin-top:12px;grid-template-columns:1fr 1.3fr auto;align-items:end">
+      <label>
+        Número
+        <input [(ngModel)]="newBlacklistNumber" placeholder="34600111222" />
+      </label>
+      <label>
+        Nota (opcional)
+        <input [(ngModel)]="newBlacklistNote" placeholder="motivo" />
+      </label>
+      <button class="primary" (click)="addBlacklist()" [disabled]="savingBlacklist()">Añadir</button>
+    </div>
+
+    @if (!blacklist().length) {
+      <div class="empty" style="margin-top:12px">
+        <p>Lista vacía</p>
+        <span>Añade un número arriba para que el bot deje de responderle.</span>
+      </div>
+    } @else {
+      <table class="data" style="margin-top:12px">
+        <thead><tr><th>Número</th><th>Nota</th><th></th></tr></thead>
+        <tbody>
+          @for (b of blacklist(); track b.contactJid) {
+            <tr>
+              <td class="mono"><strong>{{ contactNumber(b.contactJid) }}</strong></td>
+              <td>{{ b.note || '—' }}</td>
+              <td class="right">
+                <button class="danger" (click)="removeBlacklist(b.contactJid)">Quitar</button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </section>
+} @else if (loading()) {
+  <p class="muted">Cargando…</p>
+}

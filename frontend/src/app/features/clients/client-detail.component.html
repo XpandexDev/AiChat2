@@ -60,6 +60,31 @@
         <p class="muted small">Sin token generado.</p>
       }
 
+      <h2 style="margin-top:24px">Acceso al panel del cliente</h2>
+      <p class="muted" style="margin-top:4px;font-size:.85rem">
+        El cliente entra en su panel con su email y la contraseña que le asignes aquí.
+      </p>
+      <div class="meta" style="margin-top:8px">
+        @if (c.passwordConfigured) {
+          <span class="badge ok">Contraseña configurada</span>
+        } @else {
+          <span class="badge mute">Sin contraseña</span>
+        }
+      </div>
+      <div class="form-grid" style="margin-top:10px;grid-template-columns:1fr auto;align-items:end">
+        <label>
+          {{ c.passwordConfigured ? 'Nueva contraseña' : 'Contraseña' }}
+          <input type="password" [(ngModel)]="newPassword" autocomplete="new-password" placeholder="mínimo 8 caracteres" />
+        </label>
+        <button class="primary" (click)="assignPassword()" [disabled]="savingPassword()">
+          {{ savingPassword() ? 'Guardando…' : (c.passwordConfigured ? 'Resetear' : 'Asignar') }}
+        </button>
+      </div>
+      <div class="pairing-url" style="margin-top:10px">
+        <input readonly [value]="panelUrl()" class="mono" />
+        <a class="ghost btn-link" [href]="panelUrl()" target="_blank" rel="noopener">Abrir panel</a>
+      </div>
+
       <h2 style="margin-top:24px">Webhook</h2>
       <dl class="kv" style="margin-top:14px">
         <dt>URL entrante</dt>
@@ -73,6 +98,38 @@
             {{ testing() ? 'Probando...' : 'Probar webhook' }}
           </button>
         </div>
+      }
+
+      <h2 style="margin-top:24px">Números sin bot (blacklist)</h2>
+      <p class="muted" style="margin-top:4px;font-size:.85rem">
+        El bot ignora por completo a estos números (no responde nada).
+      </p>
+      <div class="form-grid" style="margin-top:10px;grid-template-columns:1fr 1.2fr auto;align-items:end">
+        <label>
+          Número
+          <input [(ngModel)]="newBlNumber" placeholder="34600111222" />
+        </label>
+        <label>
+          Nota (opcional)
+          <input [(ngModel)]="newBlNote" placeholder="motivo" />
+        </label>
+        <button class="primary" (click)="addBlacklist()" [disabled]="savingBl()">Añadir</button>
+      </div>
+      @if (!blacklist().length) {
+        <p class="muted small" style="margin-top:10px">Sin números en la lista.</p>
+      } @else {
+        <table class="data" style="margin-top:10px">
+          <thead><tr><th>Número</th><th>Nota</th><th></th></tr></thead>
+          <tbody>
+            @for (b of blacklist(); track b.contactJid) {
+              <tr>
+                <td class="mono">{{ contactNumber(b.contactJid) }}</td>
+                <td>{{ b.note || '—' }}</td>
+                <td class="right"><button class="danger" (click)="removeBlacklist(b.contactJid)">Quitar</button></td>
+              </tr>
+            }
+          </tbody>
+        </table>
       }
     </section>
 

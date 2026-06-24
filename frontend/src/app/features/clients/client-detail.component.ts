@@ -2,7 +2,7 @@ import { Component, Input, OnDestroy, OnInit, computed, inject, signal, effect }
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
-import { Client, ClientsService } from '../../core/api/clients.service';
+import { Client, ClientsService, BlacklistEntry } from '../../core/api/clients.service';
 import { SessionsService, WaSession } from '../../core/api/sessions.service';
 import { WebhooksService } from '../../core/api/webhooks.service';
 import { errorToMessage } from '../../core/api/error';
@@ -28,10 +28,45 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
   readonly notice = signal<string | null>(null);
   readonly testing = signal(false);
   readonly regenerating = signal(false);
+  readonly savingPassword = signal(false);
+
+  newPassword = '';
+
+  readonly blacklist = signal<BlacklistEntry[]>([]);
+  newBlNumber = '';
+  newBlNote = '';
+  readonly savingBl = signal(false);
 
   pairingUrl(token: string | null): string {
     if (!token) return '';
     return `${window.location.origin}/connect/${token}`;
+  }
+
+  panelUrl(): string {
+    return `${window.location.origin}/panel/login`;
+  }
+
+  assignPassword() {
+    const c = this.client();
+    if (!c) return;
+    if (this.newPassword.length < 8) {
+      this.error.set('La contraseña debe tener al menos 8 caracteres');
+      return;
+    }
+    this.savingPassword.set(true);
+    this.error.set(null);
+    this.clientsApi.setPassword(c.id, this.newPassword).subscribe({
+      next: (r) => {
+        this.savingPassword.set(false);
+        this.newPassword = '';
+        this.client.set({ ...c, passwordConfigured: r.passwordConfigured });
+        this.notice.set('Contraseña del panel asignada');
+      },
+      error: (err) => {
+        this.savingPassword.set(false);
+        this.error.set(errorToMessage(err, 'No se pudo asignar la contraseña'));
+      },
+    });
   }
 
   async copyPairingUrl() {
@@ -95,6 +130,41 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
     this.clientsApi.sessions(id).subscribe({
       next: (list) => this.persistedSessions.set(list),
       error: () => this.persistedSessions.set([]),
+    });
+    this.clientsApi.listBlacklist(id).subscribe({
+      next: (list) => this.blacklist.set(list),
+      error: () => this.blacklist.set([]),
+    });
+  }
+
+  contactNumber(jid: string): string {
+    return (jid || '').split('@')[0];
+  }
+
+  addBlacklist() {
+    const c = this.client();
+    const num = this.newBlNumber.trim();
+    if (!c || !num) return;
+    this.savingBl.set(true);
+    this.error.set(null);
+    this.clientsApi.addBlacklist(c.id, num, this.newBlNote.trim() || null).subscribe({
+      next: (list) => {
+        this.blacklist.set(list);
+        this.newBlNumber = '';
+        this.newBlNote = '';
+        this.savingBl.set(false);
+        this.notice.set('Número añadido a la lista sin bot');
+      },
+      error: (err) => { this.savingBl.set(false); this.error.set(errorToMessage(err, 'No se pudo añadir el número')); },
+    });
+  }
+
+  removeBlacklist(jid: string) {
+    const c = this.client();
+    if (!c) return;
+    this.clientsApi.removeBlacklist(c.id, jid).subscribe({
+      next: (list) => { this.blacklist.set(list); this.notice.set('Número quitado de la lista'); },
+      error: (err) => this.error.set(errorToMessage(err, 'No se pudo quitar el número')),
     });
   }
 

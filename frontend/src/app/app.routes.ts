@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard, guestOnlyGuard } from './core/auth/auth.guard';
+import { clientAuthGuard, clientGuestOnlyGuard } from './core/auth/client-auth.guard';
 
 export const routes: Routes = [
   {
@@ -12,6 +13,21 @@ export const routes: Routes = [
     path: 'connect',
     loadChildren: () => import('./features/onboard/onboard.routes').then((m) => m.ONBOARD_ROUTES),
   },
+  {
+    // Panel self-service del cliente (login propio, separado del admin)
+    path: 'panel/login',
+    canActivate: [clientGuestOnlyGuard],
+    loadComponent: () => import('./features/panel/client-login.component').then((m) => m.ClientLoginComponent),
+  },
+  {
+    path: 'panel',
+    canActivate: [clientAuthGuard],
+    loadComponent: () => import('./features/panel/client-layout.component').then((m) => m.ClientLayoutComponent),
+    children: [
+      { path: '', loadChildren: () => import('./features/panel/panel.routes').then((m) => m.PANEL_ROUTES) },
+    ],
+  },
+  { path: 'panel/**', redirectTo: 'panel/login' },
   {
     path: '',
     canActivate: [authGuard],

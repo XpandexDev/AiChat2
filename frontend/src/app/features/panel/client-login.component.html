@@ -1,0 +1,41 @@
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="brand">
+      <img src="/xpandex-wordmark.png" alt="Xpandex" class="brand-wordmark" />
+      <p class="brand-subtitle">Panel de cliente</p>
+    </div>
+
+    <form (submit)="$event.preventDefault(); submit()" class="stack">
+      <label>
+        Email
+        <input
+          type="email"
+          [(ngModel)]="email"
+          name="email"
+          autocomplete="username"
+          required
+          autofocus
+        />
+      </label>
+
+      <label>
+        Contraseña
+        <input
+          type="password"
+          [(ngModel)]="password"
+          name="password"
+          autocomplete="current-password"
+          required
+        />
+      </label>
+
+      <button type="submit" class="primary" [disabled]="loading()">
+        {{ loading() ? 'Entrando...' : 'Entrar' }}
+      </button>
+
+      @if (error(); as msg) {
+        <p class="error-banner">{{ msg }}</p>
+      }
+    </form>
+  </div>
+</div>

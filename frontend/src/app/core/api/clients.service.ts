@@ -13,9 +13,20 @@ export interface Client {
   webhookIncomingUrl: string | null;
   webhookSecretConfigured: boolean;
   pairingToken: string | null;
+  passwordConfigured: boolean;
+  botEnabled: boolean;
+  scheduleEnabled: boolean;
+  timezone: string;
+  autoReplyText: string | null;
   createdBy: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BlacklistEntry {
+  contactJid: string;
+  note: string | null;
+  createdAt: string;
 }
 
 export interface ClientInput {
@@ -62,5 +73,23 @@ export class ClientsService {
 
   regeneratePairing(id: number): Observable<Client> {
     return this.http.post<Client>(`${this.base}/${id}/pairing/regenerate`, {});
+  }
+
+  setPassword(id: number, password: string): Observable<{ ok: boolean; passwordConfigured: boolean }> {
+    return this.http.post<{ ok: boolean; passwordConfigured: boolean }>(`${this.base}/${id}/password`, { password });
+  }
+
+  listBlacklist(id: number): Observable<BlacklistEntry[]> {
+    return this.http.get<BlacklistEntry[]>(`${this.base}/${id}/blacklist`);
+  }
+
+  addBlacklist(id: number, number: string, note: string | null): Observable<BlacklistEntry[]> {
+    return this.http.post<BlacklistEntry[]>(`${this.base}/${id}/blacklist`, { number, note });
+  }
+
+  removeBlacklist(id: number, number: string): Observable<BlacklistEntry[]> {
+    return this.http.delete<BlacklistEntry[]>(`${this.base}/${id}/blacklist`, {
+      params: new HttpParams().set('number', number),
+    });
   }
 }

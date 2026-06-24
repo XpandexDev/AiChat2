@@ -5,19 +5,26 @@ const rateLimit = require('express-rate-limit');
 const isProd = process.env.NODE_ENV === 'production';
 const MAX_ATTEMPTS = Number(process.env.LOGIN_RATE_MAX) || (isProd ? 5 : 50);
 
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: MAX_ATTEMPTS,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator(req) {
-    return req.ip || req.socket?.remoteAddress || 'unknown';
-  },
-  handler(_req, res) {
-    res.status(429).json({
-      error: 'Demasiados intentos de login. Inténtalo en unos minutos.',
-    });
-  },
-});
+// Factory: cada instancia tiene su PROPIO MemoryStore. Así el login de admin y el
+// de cliente NO comparten el contador por IP (agotar intentos en uno no bloquea el otro).
+function makeLoginLimiter() {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: MAX_ATTEMPTS,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator(req) {
+      return req.ip || req.socket?.remoteAddress || 'unknown';
+    },
+    handler(_req, res) {
+      res.status(429).json({
+        error: 'Demasiados intentos de login. Inténtalo en unos minutos.',
+      });
+    },
+  });
+}
 
-module.exports = { loginLimiter };
+const loginLimiter = makeLoginLimiter();        // admin
+const clientLoginLimiter = makeLoginLimiter();  // panel cliente (contador independiente)
+
+module.exports = { loginLimiter, clientLoginLimiter, makeLoginLimiter };

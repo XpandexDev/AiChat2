@@ -1,0 +1,52 @@
+:host {
+  display: block;
+  min-height: 100vh;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  .brand-wordmark {
+    height: 28px;
+    width: auto;
+    display: block;
+  }
+
+  .panel-tag {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+}
+
+.panel-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  .who {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+}
+
+.panel-main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+}

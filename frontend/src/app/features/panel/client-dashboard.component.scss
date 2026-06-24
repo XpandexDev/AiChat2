@@ -1,0 +1,75 @@
+:host { display: block; }
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+// Anchor que se ve como botón .primary
+a.as-button {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.sched-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 20px;
+  margin: 12px 0 6px;
+}
+
+.inline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+
+  input[type='checkbox'] { width: auto; }
+}
+
+.days {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.day-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.day-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.windows {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.window {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  input[type='time'] { width: auto; padding: 4px 8px; }
+  .sep { color: var(--text-dim); }
+}
+
+.dim { color: var(--text-dim); font-size: 0.85rem; }
+
+.mini {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
