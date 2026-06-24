@@ -30,6 +30,16 @@ export interface RealtimeEvent {
   timestamp: string;
 }
 
+export interface Handoff {
+  clientId: number;
+  contactJid: string;
+  sessionId: string | null;
+  motivo: string | null;
+  resumen: string | null;
+  assignedAt: string | null;
+  expiresAt: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class SessionsService implements OnDestroy {
   private readonly http = inject(HttpClient);
@@ -38,6 +48,7 @@ export class SessionsService implements OnDestroy {
   // Tabla de sesiones VIVAS conocida vía socket + REST inicial.
   readonly sessions = signal<WaSession[]>([]);
   readonly events = signal<RealtimeEvent[]>([]);
+  readonly handoffs = signal<Handoff[]>([]);
   readonly socketConnected = signal(false);
   readonly socketError = signal<string | null>(null);
 
@@ -118,6 +129,29 @@ export class SessionsService implements OnDestroy {
         timestamp: p.timestamp,
       });
     });
+
+    this.socket.on('handoff:started', (p: any) => {
+      const item: Handoff = {
+        clientId: p.clientId, contactJid: p.contactJid, sessionId: p.sessionId,
+        motivo: p.motivo ?? null, resumen: p.resumen ?? null,
+        assignedAt: p.timestamp ?? null, expiresAt: null,
+      };
+      const cur = this.handoffs();
+      const idx = cur.findIndex((h) => h.clientId === item.clientId && h.contactJid === item.contactJid);
+      if (idx >= 0) {
+        const next = cur.slice();
+        next[idx] = item;
+        this.handoffs.set(next);
+      } else {
+        this.handoffs.set([item, ...cur]);
+      }
+    });
+
+    this.socket.on('handoff:resumed', (p: any) => {
+      this.handoffs.set(this.handoffs().filter(
+        (h) => !(h.clientId === p.clientId && h.contactJid === p.contactJid),
+      ));
+    });
   }
 
   private pushEvent(ev: RealtimeEvent) {
@@ -155,6 +189,16 @@ export class SessionsService implements OnDestroy {
 
   sendMessage(sessionId: string, to: string, text: string): Observable<unknown> {
     return this.http.post('/api/messages/send', { sessionId, to, text });
+  }
+
+  listHandoffs(clientId?: number): Observable<Handoff[]> {
+    let params = new HttpParams();
+    if (clientId) params = params.set('clientId', String(clientId));
+    return this.http.get<Handoff[]>(`${this.base}/handoff`, { params });
+  }
+
+  resumeContact(clientId: number, contactJid: string): Observable<{ ok: boolean }> {
+    return this.http.post<{ ok: boolean }>(`${this.base}/contact/resume`, { clientId, contactJid });
   }
 }
 

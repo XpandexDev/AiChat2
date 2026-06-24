@@ -5,6 +5,7 @@ const pino = require('pino');
 const config = require('../../config');
 const pool = require('../../db/pool');
 const webhooks = require('../webhooks/service');
+const handoff = require('../handoff/service');
 
 const baileysPromise = import('@whiskeysockets/baileys');
 const baileysLogger = pino({ level: 'silent' });
@@ -38,6 +39,12 @@ function emitSessionUpdate(sessionId) {
   const session = sessions.get(sessionId);
   if (!session || !io) return;
   io.emit('session:update', serializeSession(session));
+}
+
+// Emite un evento socket genérico al panel (usado por el handoff desde routes,
+// para no acoplar las rutas a la instancia de socket.io que vive aquí).
+function emit(event, data) {
+  if (io) io.emit(event, data);
 }
 
 function updateSession(sessionId, patch) {
@@ -310,6 +317,17 @@ async function connectSocket(session) {
 
       if (io) io.emit('message:incoming', payload);
 
+      // Handoff: si el contacto está en modo humano, el bot calla — no reenviamos
+      // a n8n ni auto-respondemos. El panel ya ha visto el mensaje (emit de arriba)
+      // y un humano lo atiende. Fail-open: si la BD falla, el bot sigue operando.
+      let handoffPaused = false;
+      try {
+        handoffPaused = await handoff.isPaused(session.clientId, normalizeJid(payload.message.from));
+      } catch (e) {
+        handoffPaused = false;
+      }
+      if (handoffPaused) continue;
+
       try {
         const reply = await webhooks.forwardIncoming(session.clientId, payload, {
           connectedNumber: session.connectedNumber,
@@ -345,6 +363,31 @@ async function connectSocket(session) {
               } catch (sendErr) {
                 console.error('Error enviando respuesta de webhook:', sendErr.message);
                 break;
+              }
+            }
+
+            // Handoff: el agente decidió ceder la conversación a un humano. Tras
+            // enviar el "te atiende una persona", marcamos el contacto en modo
+            // humano para que sus próximos mensajes no lleguen al bot. Excluimos
+            // grupos (@g.us): un grupo no debe pausarse por un mensaje suelto.
+            if (reply.handoff === true && !jid.endsWith('@g.us')) {
+              try {
+                await handoff.start(session.clientId, jid, {
+                  motivo: reply.handoff_motivo,
+                  resumen: reply.handoff_resumen,
+                  sessionId: session.sessionId,
+                  ttlMinutes: config.HANDOFF_TTL_MINUTES,
+                });
+                emit('handoff:started', {
+                  clientId: session.clientId,
+                  sessionId: session.sessionId,
+                  contactJid: jid,
+                  motivo: reply.handoff_motivo || null,
+                  resumen: reply.handoff_resumen || null,
+                  timestamp: new Date().toISOString(),
+                });
+              } catch (e) {
+                console.error('handoff.start error:', e.message);
               }
             }
           }
@@ -699,4 +742,5 @@ module.exports = {
   lookupClientIdBySessionId,
   resumeSessions,
   normalizeJid,
+  emit,
 };
