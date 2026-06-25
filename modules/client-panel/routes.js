@@ -3,6 +3,7 @@ const panelService = require('./service');
 const clientsService = require('../clients/service');
 const sessionsManager = require('../sessions/manager');
 const blacklist = require('../blacklist/service');
+const handoff = require('../handoff/service');
 const { requireClient } = require('../../middleware/client-auth');
 
 const router = express.Router();
@@ -96,6 +97,48 @@ router.delete('/blacklist', async (req, res) => {
     return res.json(await blacklist.remove(req.clientId, jid));
   } catch (error) {
     return res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Handoff (contactos con humano al mando) del propio cliente ---
+router.get('/handoff', async (req, res) => {
+  try {
+    return res.json(await handoff.listActive(req.clientId));
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/contact/resume', async (req, res) => {
+  const contactJid = sessionsManager.normalizeJid(req.body?.contactJid);
+  if (!contactJid) return res.status(400).json({ error: 'contactJid requerido' });
+  try {
+    const ok = await handoff.resume(req.clientId, contactJid);
+    sessionsManager.emit('handoff:resumed', { clientId: req.clientId, contactJid, timestamp: new Date().toISOString() });
+    return res.json({ ok });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Responder a un contacto desde el panel. `to` debe ser el reply_jid del handoff
+// (JID exacto al que mandó WhatsApp). Verifica que la sesión es del propio cliente.
+router.post('/send', async (req, res) => {
+  const sessionId = String(req.body?.sessionId || '').trim();
+  const to = String(req.body?.to || '').trim();
+  const text = String(req.body?.text || '').trim();
+  if (!sessionId || !to || !text) {
+    return res.status(400).json({ error: 'sessionId, to y text son requeridos' });
+  }
+  try {
+    const ownerId = await sessionsManager.lookupClientIdBySessionId(sessionId);
+    if (ownerId !== req.clientId) {
+      return res.status(403).json({ error: 'Esa sesión no es de este cliente' });
+    }
+    const result = await sessionsManager.sendMessage(sessionId, to, text);
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 });
 
