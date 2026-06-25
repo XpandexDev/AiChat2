@@ -73,3 +73,20 @@ a.as-button {
   padding: 4px 10px;
   font-size: 0.8rem;
 }
+
+.reply-box {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+
+  .reply-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.9rem;
+    color: var(--text-dim);
+  }
+}

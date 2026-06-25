@@ -389,11 +389,18 @@ async function connectSocket(session) {
 
       if (io) io.emit('message:incoming', payload);
 
+      // Identidad del contacto por TELÉFONO (estable aunque WhatsApp direccione por
+      // @lid): senderPn es el número real; si no viene, caemos al remoteJid.
+      // replyJid = el JID EXACTO al que responder (lo que mandó WhatsApp), para no
+      // arriesgar la entrega. Handoff y blacklist casan/muestran por contactJid.
+      const replyJid = msg.key.remoteJid;
+      const contactJid = normalizeJid(msg.key.senderPn || msg.key.remoteJid);
+
       // Blacklist: números marcados como "sin bot" (cliente/admin) → silencio
       // total. El bot los ignora por completo: ni reenvío a n8n ni aviso.
       let isBlocked = false;
       try {
-        isBlocked = await blacklist.isBlacklisted(session.clientId, normalizeJid(payload.message.from));
+        isBlocked = await blacklist.isBlacklisted(session.clientId, contactJid);
       } catch (e) {
         isBlocked = false; // fail-open
       }
@@ -404,7 +411,7 @@ async function connectSocket(session) {
       // y un humano lo atiende. Fail-open: si la BD falla, el bot sigue operando.
       let handoffPaused = false;
       try {
-        handoffPaused = await handoff.isPaused(session.clientId, normalizeJid(payload.message.from));
+        handoffPaused = await handoff.isPaused(session.clientId, contactJid);
       } catch (e) {
         handoffPaused = false;
       }
@@ -419,20 +426,19 @@ async function connectSocket(session) {
         botState = null; // fail-open: si la BD falla, el bot sigue operando
       }
       if (botState && !isBotActive(botState, new Date())) {
-        const offJid = normalizeJid(payload.message.from);
-        if (botState.auto_reply_text && offJid && !offJid.endsWith('@g.us')
-            && session.sock && canSendAutoReply(session.clientId, offJid)) {
+        if (botState.auto_reply_text && replyJid && !replyJid.endsWith('@g.us')
+            && session.sock && canSendAutoReply(session.clientId, contactJid)) {
           try {
-            const sent = await session.sock.sendMessage(offJid, { text: botState.auto_reply_text });
+            const sent = await session.sock.sendMessage(replyJid, { text: botState.auto_reply_text });
             // Marca el cooldown SOLO tras enviar con éxito (un fallo no bloquea el reintento).
-            markAutoReplySent(session.clientId, offJid);
+            markAutoReplySent(session.clientId, contactJid);
             if (io) io.emit('message:outgoing', {
               type: 'outgoing_message',
               source: 'auto-reply',
               sessionId: session.sessionId,
               clientId: session.clientId,
               timestamp: new Date().toISOString(),
-              message: { id: sent?.key?.id || null, to: offJid, body: botState.auto_reply_text },
+              message: { id: sent?.key?.id || null, to: replyJid, body: botState.auto_reply_text },
             });
           } catch (err) {
             console.error('auto-reply error:', err.message);
@@ -483,9 +489,11 @@ async function connectSocket(session) {
             // enviar el "te atiende una persona", marcamos el contacto en modo
             // humano para que sus próximos mensajes no lleguen al bot. Excluimos
             // grupos (@g.us): un grupo no debe pausarse por un mensaje suelto.
-            if (reply.handoff === true && !jid.endsWith('@g.us')) {
+            if (reply.handoff === true && !replyJid.endsWith('@g.us')) {
               try {
-                await handoff.start(session.clientId, jid, {
+                // contactJid = identidad por teléfono (clave); replyJid = JID exacto al que responder.
+                await handoff.start(session.clientId, contactJid, {
+                  replyJid,
                   motivo: reply.handoff_motivo,
                   resumen: reply.handoff_resumen,
                   sessionId: session.sessionId,
@@ -494,7 +502,7 @@ async function connectSocket(session) {
                 emit('handoff:started', {
                   clientId: session.clientId,
                   sessionId: session.sessionId,
-                  contactJid: jid,
+                  contactJid,
                   motivo: reply.handoff_motivo || null,
                   resumen: reply.handoff_resumen || null,
                   timestamp: new Date().toISOString(),

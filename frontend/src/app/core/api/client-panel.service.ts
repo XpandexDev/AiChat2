@@ -8,6 +8,16 @@ export interface BlacklistEntry {
   createdAt: string;
 }
 
+export interface HandoffContact {
+  contactJid: string;
+  replyJid: string | null;
+  sessionId: string | null;
+  motivo: string | null;
+  resumen: string | null;
+  assignedAt: string | null;
+  expiresAt: string | null;
+}
+
 export interface ClientSessionView {
   sessionId: string;
   status: string;
@@ -76,5 +86,17 @@ export class ClientPanelService {
     return this.http.delete<BlacklistEntry[]>(`${this.base}/blacklist`, {
       params: new HttpParams().set('number', number),
     });
+  }
+
+  listHandoff(): Observable<HandoffContact[]> {
+    return this.http.get<HandoffContact[]>(`${this.base}/handoff`);
+  }
+
+  resumeContact(contactJid: string): Observable<{ ok: boolean }> {
+    return this.http.post<{ ok: boolean }>(`${this.base}/contact/resume`, { contactJid });
+  }
+
+  sendReply(sessionId: string, to: string, text: string): Observable<unknown> {
+    return this.http.post(`${this.base}/send`, { sessionId, to, text });
   }
 }

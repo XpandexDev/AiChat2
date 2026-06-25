@@ -1,7 +1,8 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { DatePipe } from '@angular/common';
 import {
-  ClientPanelService, ClientMeClient, ClientSessionView, ScheduleWindow, SchedulePayload, BlacklistEntry,
+  ClientPanelService, ClientMeClient, ClientSessionView, ScheduleWindow, SchedulePayload, BlacklistEntry, HandoffContact,
 } from '../../core/api/client-panel.service';
 import { errorToMessage } from '../../core/api/error';
 
@@ -20,7 +21,7 @@ const DAY_LABELS: Record<number, string> = {
 @Component({
   selector: 'app-client-dashboard',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, DatePipe],
   templateUrl: './client-dashboard.component.html',
   styleUrl: './client-dashboard.component.scss',
 })
@@ -52,6 +53,12 @@ export class ClientDashboardComponent implements OnInit {
   newBlacklistNote = '';
   readonly savingBlacklist = signal(false);
 
+  // Handoff (contactos con humano al mando)
+  readonly handoffs = signal<HandoffContact[]>([]);
+  readonly replyTarget = signal<HandoffContact | null>(null);
+  replyText = '';
+  readonly sendingReply = signal(false);
+
   ngOnInit() {
     this.load();
   }
@@ -69,6 +76,49 @@ export class ClientDashboardComponent implements OnInit {
     this.api.listBlacklist().subscribe({
       next: (l) => this.blacklist.set(l),
       error: () => this.blacklist.set([]),
+    });
+    this.loadHandoff();
+  }
+
+  loadHandoff() {
+    this.api.listHandoff().subscribe({
+      next: (l) => this.handoffs.set(l),
+      error: () => this.handoffs.set([]),
+    });
+  }
+
+  replyTo(h: HandoffContact) {
+    this.replyTarget.set(h);
+    this.replyText = '';
+  }
+
+  cancelReply() {
+    this.replyTarget.set(null);
+    this.replyText = '';
+  }
+
+  sendReply() {
+    const h = this.replyTarget();
+    const text = this.replyText.trim();
+    if (!h || !text) return;
+    const to = h.replyJid || h.contactJid;
+    if (!h.sessionId || !to) { this.error.set('No hay sesión/destino para responder'); return; }
+    this.sendingReply.set(true);
+    this.error.set(null);
+    this.api.sendReply(h.sessionId, to, text).subscribe({
+      next: () => { this.sendingReply.set(false); this.replyText = ''; this.replyTarget.set(null); this.notice.set('Mensaje enviado'); },
+      error: (err) => { this.sendingReply.set(false); this.error.set(errorToMessage(err, 'No se pudo enviar')); },
+    });
+  }
+
+  resumeHandoff(h: HandoffContact) {
+    this.api.resumeContact(h.contactJid).subscribe({
+      next: () => {
+        this.handoffs.set(this.handoffs().filter((x) => x.contactJid !== h.contactJid));
+        if (this.replyTarget()?.contactJid === h.contactJid) this.replyTarget.set(null);
+        this.notice.set('Bot reactivado para el contacto');
+      },
+      error: (err) => this.error.set(errorToMessage(err, 'No se pudo reactivar el bot')),
     });
   }
 

@@ -85,47 +85,6 @@
 </section>
 
 <section class="card">
-  <h2>Contactos con humano al mando</h2>
-  <p class="muted" style="margin-top:4px;font-size:.88rem">
-    El bot está en pausa para estos contactos. Responde tú desde el panel y devuélvelo al bot cuando termines.
-  </p>
-  @if (!handoffs().length) {
-    <div class="empty" style="margin-top:14px">
-      <p>Ningún contacto en modo humano</p>
-      <span>Aparecerán aquí cuando el bot derive una conversación a una persona.</span>
-    </div>
-  } @else {
-    <table class="data" style="margin-top:14px">
-      <thead>
-        <tr>
-          <th>Contacto</th>
-          <th>Cliente</th>
-          <th>Motivo</th>
-          <th>Resumen</th>
-          <th>Desde</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (h of handoffs(); track h.contactJid) {
-          <tr>
-            <td class="mono"><strong>{{ contactNumber(h.contactJid) }}</strong></td>
-            <td>{{ clientName(h.clientId) }}</td>
-            <td>{{ h.motivo || '—' }}</td>
-            <td>{{ h.resumen || '—' }}</td>
-            <td>{{ h.assignedAt ? (h.assignedAt | date: 'dd/MM HH:mm') : '—' }}</td>
-            <td class="right">
-              <button class="ghost" (click)="replyToContact(h)">Responder</button>
-              <button class="primary" (click)="resumeContact(h)">Devolver al bot</button>
-            </td>
-          </tr>
-        }
-      </tbody>
-    </table>
-  }
-</section>
-
-<section class="card">
   <h2>Enviar mensaje (manual)</h2>
   <div class="form-grid" style="margin-top:14px">
     <label>

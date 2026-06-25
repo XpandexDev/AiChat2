@@ -5,6 +5,55 @@
   <p class="success-banner">{{ msg }}</p>
 }
 
+<section class="card">
+  <div class="card-head">
+    <h2>Contactos con humano al mando</h2>
+    <button class="ghost mini" (click)="loadHandoff()">Actualizar</button>
+  </div>
+  <p class="muted" style="margin-top:4px;font-size:.9rem">
+    El bot está en pausa para estos contactos. Respóndeles tú y devuélvelos al bot cuando termines.
+  </p>
+  @if (!handoffs().length) {
+    <div class="empty" style="margin-top:12px">
+      <p>Ningún contacto en modo humano</p>
+      <span>Aparecerán aquí cuando el bot derive una conversación a una persona.</span>
+    </div>
+  } @else {
+    <table class="data" style="margin-top:12px">
+      <thead><tr><th>Contacto</th><th>Motivo</th><th>Resumen</th><th>Desde</th><th></th></tr></thead>
+      <tbody>
+        @for (h of handoffs(); track h.contactJid) {
+          <tr>
+            <td class="mono"><strong>{{ contactNumber(h.contactJid) }}</strong></td>
+            <td>{{ h.motivo || '—' }}</td>
+            <td>{{ h.resumen || '—' }}</td>
+            <td>{{ h.assignedAt ? (h.assignedAt | date: 'dd/MM HH:mm') : '—' }}</td>
+            <td class="right">
+              <button class="ghost" (click)="replyTo(h)">Responder</button>
+              <button class="primary" (click)="resumeHandoff(h)">Devolver al bot</button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+
+    @if (replyTarget(); as r) {
+      <div class="reply-box">
+        <div class="reply-head">
+          Respondiendo a <strong class="mono">{{ contactNumber(r.contactJid) }}</strong>
+          <button class="ghost mini" (click)="cancelReply()">Cancelar</button>
+        </div>
+        <textarea rows="3" [(ngModel)]="replyText" placeholder="Escribe tu respuesta…"></textarea>
+        <div class="form-actions">
+          <button class="primary" (click)="sendReply()" [disabled]="sendingReply()">
+            {{ sendingReply() ? 'Enviando…' : 'Enviar' }}
+          </button>
+        </div>
+      </div>
+    }
+  }
+</section>
+
 @if (me(); as c) {
   <section class="card">
     <div class="card-head">

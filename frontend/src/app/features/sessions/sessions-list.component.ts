@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
-import { SessionsService, Handoff } from '../../core/api/sessions.service';
+import { SessionsService } from '../../core/api/sessions.service';
 import { ClientsService, Client } from '../../core/api/clients.service';
 import { errorToMessage } from '../../core/api/error';
 
@@ -19,7 +19,6 @@ export class SessionsListComponent implements OnInit, OnDestroy {
 
   readonly sessions = this.sessionsApi.sessions;
   readonly events = this.sessionsApi.events;
-  readonly handoffs = this.sessionsApi.handoffs;
 
   readonly clients = signal<Client[]>([]);
   readonly error = signal<string | null>(null);
@@ -41,11 +40,6 @@ export class SessionsListComponent implements OnInit, OnDestroy {
     // Trigger a fresh fetch (socket already pushes sessions:init pero forzamos)
     this.sessionsApi.list().subscribe({
       next: (list) => this.sessionsApi.sessions.set(list),
-      error: () => {},
-    });
-    // Hidratar contactos en modo humano (el socket solo trae cambios en vivo).
-    this.sessionsApi.listHandoffs().subscribe({
-      next: (list) => this.sessionsApi.handoffs.set(list),
       error: () => {},
     });
   }
@@ -94,24 +88,6 @@ export class SessionsListComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: () => { this.notice.set('Mensaje enviado'); this.sendText = ''; },
       error: (err) => this.error.set(errorToMessage(err, 'No se pudo enviar')),
-    });
-  }
-
-  // --- Handoff ---
-  contactNumber(jid: string): string {
-    return (jid || '').split('@')[0];
-  }
-
-  replyToContact(h: Handoff) {
-    this.sendSessionId = h.sessionId || '';
-    this.sendTo = this.contactNumber(h.contactJid);
-    this.notice.set('Form de envío rellenado: escribe tu respuesta abajo.');
-  }
-
-  resumeContact(h: Handoff) {
-    this.sessionsApi.resumeContact(h.clientId, h.contactJid).subscribe({
-      next: () => this.notice.set('Bot reactivado para el contacto'),
-      error: (err) => this.error.set(errorToMessage(err, 'No se pudo reactivar el bot')),
     });
   }
 

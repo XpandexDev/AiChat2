@@ -22,17 +22,17 @@ async function isPaused(clientId, contactJid) {
 // ttlMinutes opcional → expira solo (rearme perezoso); null = solo rearme manual.
 async function start(clientId, contactJid, opts = {}) {
   if (!clientId || !contactJid) return;
-  const { motivo = null, resumen = null, sessionId = null, ttlMinutes = null } = opts;
+  const { motivo = null, resumen = null, sessionId = null, ttlMinutes = null, replyJid = null } = opts;
   const expiresAt = ttlMinutes ? new Date(Date.now() + ttlMinutes * 60000) : null;
   await pool.execute(
     `INSERT INTO handoff_state
-       (client_id, contact_jid, session_id, status, motivo, resumen, assigned_at, released_at, expires_at)
-     VALUES (?, ?, ?, 'human', ?, ?, NOW(), NULL, ?)
+       (client_id, contact_jid, reply_jid, session_id, status, motivo, resumen, assigned_at, released_at, expires_at)
+     VALUES (?, ?, ?, ?, 'human', ?, ?, NOW(), NULL, ?)
      ON DUPLICATE KEY UPDATE
-       status = 'human', session_id = VALUES(session_id), motivo = VALUES(motivo),
-       resumen = VALUES(resumen), assigned_at = NOW(), released_at = NULL,
-       expires_at = VALUES(expires_at)`,
-    [clientId, contactJid, sessionId, motivo, resumen, expiresAt],
+       status = 'human', reply_jid = VALUES(reply_jid), session_id = VALUES(session_id),
+       motivo = VALUES(motivo), resumen = VALUES(resumen), assigned_at = NOW(),
+       released_at = NULL, expires_at = VALUES(expires_at)`,
+    [clientId, contactJid, replyJid, sessionId, motivo, resumen, expiresAt],
   );
 }
 
@@ -52,8 +52,8 @@ async function listActive(clientId = null) {
   const filterClient = clientId ? 'AND client_id = ?' : '';
   const params = clientId ? [clientId] : [];
   const [rows] = await pool.execute(
-    `SELECT client_id AS clientId, contact_jid AS contactJid, session_id AS sessionId,
-            motivo, resumen, assigned_at AS assignedAt, expires_at AS expiresAt
+    `SELECT client_id AS clientId, contact_jid AS contactJid, reply_jid AS replyJid,
+            session_id AS sessionId, motivo, resumen, assigned_at AS assignedAt, expires_at AS expiresAt
      FROM handoff_state
      WHERE status = 'human' AND (expires_at IS NULL OR expires_at > NOW()) ${filterClient}
      ORDER BY assigned_at DESC`,
