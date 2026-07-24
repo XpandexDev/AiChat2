@@ -185,6 +185,26 @@ function messageType(message) {
   return Object.keys(message)[0] || 'unknown';
 }
 
+// Construye la URL final del formulario web que se envía por WhatsApp cuando n8n
+// lo ordena. Añade el teléfono del contacto (solo en 1:1, no en grupos) y los
+// campos `prefill` como query params, para que el formulario / n8n sepan quién lo
+// rellena. La URL base ya viene validada como http/https por webhooks.validateUrl.
+function buildFormUrl(form, contactJid) {
+  const url = new URL(form.url);
+  const jid = contactJid ? String(contactJid) : '';
+  if (jid.endsWith('@s.whatsapp.net')) {
+    const phone = jid.split('@')[0].replace(/\D/g, '');
+    if (phone && !url.searchParams.has('telefono')) url.searchParams.set('telefono', phone);
+  }
+  if (form.prefill && typeof form.prefill === 'object') {
+    for (const [k, v] of Object.entries(form.prefill)) {
+      if (v === null || v === undefined) continue;
+      url.searchParams.set(k, String(v));
+    }
+  }
+  return url.toString();
+}
+
 // --- Reconexión con backoff (C4+C5) ---
 // Reconectar a intervalo fijo bombardea a WhatsApp y arriesga un bloqueo del
 // número. Usamos backoff exponencial con jitter, sin rendirnos nunca para los
@@ -371,6 +391,14 @@ async function connectSocket(session) {
     for (const msg of messages) {
       if (!msg.message || msg.key?.fromMe) continue;
 
+      // Grupo vs 1:1: en un grupo, remoteJid es el JID del grupo y el que ESCRIBE
+      // está en participant (participantPn = su teléfono si WhatsApp lo direcciona
+      // por @lid); msg.pushName es su nombre visible. En 1:1, participant queda null.
+      // Mantenemos from = remoteJid → la memoria de n8n sigue siendo por grupo, y
+      // los nuevos campos permiten diferenciar quién habla dentro del grupo.
+      const remoteJid = msg.key.remoteJid;
+      const isGroup = String(remoteJid || '').endsWith('@g.us');
+
       const payload = {
         type: 'incoming_message',
         source: 'whatsapp-web',
@@ -380,10 +408,14 @@ async function connectSocket(session) {
         timestamp: new Date().toISOString(),
         message: {
           id: msg.key.id || null,
-          from: msg.key.remoteJid,
+          from: remoteJid,
           body: extractText(msg.message),
           type: messageType(msg.message),
           hasMedia: hasMedia(msg.message),
+          isGroup,
+          groupJid: isGroup ? remoteJid : null,
+          participant: isGroup ? normalizeJid(msg.key.participantPn || msg.key.participant) : null,
+          senderName: msg.pushName || null,
         },
       };
 
@@ -393,8 +425,8 @@ async function connectSocket(session) {
       // @lid): senderPn es el número real; si no viene, caemos al remoteJid.
       // replyJid = el JID EXACTO al que responder (lo que mandó WhatsApp), para no
       // arriesgar la entrega. Handoff y blacklist casan/muestran por contactJid.
-      const replyJid = msg.key.remoteJid;
-      const contactJid = normalizeJid(msg.key.senderPn || msg.key.remoteJid);
+      const replyJid = remoteJid;
+      const contactJid = normalizeJid(msg.key.senderPn || remoteJid);
 
       // Blacklist: números marcados como "sin bot" (cliente/admin) → silencio
       // total. El bot los ignora por completo: ni reenvío a n8n ni aviso.
@@ -456,12 +488,13 @@ async function connectSocket(session) {
           const jid = normalizeJid(reply.to);
           if (jid) {
             // Protocolo con n8n: \n = salto de línea dentro del mensaje,
-            // \n\n = separador entre mensajes WhatsApp distintos.
-            const parts = String(reply.text)
+            // \n\n = separador entre mensajes WhatsApp distintos. Si n8n solo
+            // ordena un formulario (text vacío), chunks queda vacío y no se envía
+            // ningún mensaje de texto (solo el enlace del formulario, más abajo).
+            const chunks = String(reply.text || '')
               .split(/\n{2,}/)
               .map((p) => p.trim())
               .filter(Boolean);
-            const chunks = parts.length > 0 ? parts : [String(reply.text)];
 
             for (let i = 0; i < chunks.length; i++) {
               try {
@@ -482,6 +515,30 @@ async function connectSocket(session) {
               } catch (sendErr) {
                 console.error('Error enviando respuesta de webhook:', sendErr.message);
                 break;
+              }
+            }
+
+            // Formulario web: si n8n ordenó un formulario, enviamos su ENLACE como
+            // mensaje aparte, tras el texto. (Baileys no puede mandar Flows nativos
+            // de WhatsApp con garantías; un enlace funciona en el 100% de clientes.)
+            if (reply.form && reply.form.url && webhooks.validateUrl(reply.form.url)) {
+              try {
+                const formUrl = buildFormUrl(reply.form, contactJid);
+                const formText = reply.form.title ? `${reply.form.title}:\n${formUrl}` : formUrl;
+                if (chunks.length > 0) await new Promise((r) => setTimeout(r, 800));
+                const sent = await session.sock.sendMessage(jid, { text: formText });
+                if (io) {
+                  io.emit('message:outgoing', {
+                    type: 'outgoing_message',
+                    source: 'form-link',
+                    sessionId: session.sessionId,
+                    clientId: session.clientId,
+                    timestamp: new Date().toISOString(),
+                    message: { id: sent?.key?.id || null, to: jid, body: formText },
+                  });
+                }
+              } catch (formErr) {
+                console.error('Error enviando enlace de formulario:', formErr.message);
               }
             }
 
