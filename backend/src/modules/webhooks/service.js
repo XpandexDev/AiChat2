@@ -74,7 +74,8 @@ function formatError(error) {
 // y el connectedNumber (línea WA real que recibió el mensaje), para que n8n
 // pueda enrutar por número conectado o por cliente.
 //
-// Returns { to, text } if the webhook responded with an auto-reply, else null.
+// Returns { to, text, handoff?, form? } if the webhook responded with an
+// auto-reply (o una orden de handoff / formulario), else null.
 // Throws on network / non-2xx errors.
 async function forwardIncoming(clientId, payload, extras = {}) {
   const client = await getClientForPayload(clientId);
@@ -101,14 +102,30 @@ async function forwardIncoming(clientId, payload, extras = {}) {
     timeout: 60000,
   });
 
-  if (response?.data?.to && response?.data?.text) {
-    const out = { to: String(response.data.to), text: String(response.data.text) };
+  if (response?.data?.to && (response.data.text || response.data.form)) {
+    const out = {
+      to: String(response.data.to),
+      text: response.data.text ? String(response.data.text) : '',
+    };
     // Señal de handoff: si n8n la incluye, la propagamos sin romper el contrato
     // {to,text}. El handoff SIEMPRE acompaña un texto (el "te atiende una persona").
     if (response.data.handoff === true || response.data.handoff === 'true') {
       out.handoff = true;
       out.handoff_motivo = response.data.handoff_motivo ? String(response.data.handoff_motivo) : null;
       out.handoff_resumen = response.data.handoff_resumen ? String(response.data.handoff_resumen) : null;
+    }
+    // Orden de FORMULARIO web: n8n puede pedir que se envíe un enlace a un
+    // formulario (Baileys no puede mandar Flows nativos de WhatsApp con garantías).
+    // Solo se propaga si trae `url`; la app valida el esquema http/https antes de
+    // enviar. `prefill` (opcional) son campos que la app añade como query params.
+    if (response.data.form && response.data.form.url) {
+      out.form = {
+        url: String(response.data.form.url),
+        title: response.data.form.title ? String(response.data.form.title) : null,
+        prefill: (response.data.form.prefill && typeof response.data.form.prefill === 'object')
+          ? response.data.form.prefill
+          : null,
+      };
     }
     return out;
   }
