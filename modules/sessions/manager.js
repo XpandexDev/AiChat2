@@ -49,6 +49,79 @@ function emit(event, data) {
   if (io) io.emit(event, data);
 }
 
+// --- Chat en vivo: ring buffer de mensajes EN RAM (sin BD, por decisión de
+// producto: no se persiste contenido de conversaciones). Da contexto reciente
+// al abrir el panel; un reinicio lo vacía. Estructura:
+//   chatBuffer: clientId -> Map(contactJid -> { contactJid, senderName, isGroup,
+//                                               lastAt, messages: [...] })
+const CHAT_MSGS_PER_CONV = 50;    // últimos N mensajes por conversación
+const CHAT_CONVS_PER_CLIENT = 100; // conversaciones por cliente (evicción LRU)
+const chatBuffer = new Map();
+
+function recordChatMessage(clientId, contactJid, entry, meta = {}) {
+  if (!clientId || !contactJid) return;
+  let convs = chatBuffer.get(clientId);
+  if (!convs) {
+    convs = new Map();
+    chatBuffer.set(clientId, convs);
+  }
+  let conv = convs.get(contactJid);
+  if (!conv) {
+    conv = { contactJid, senderName: null, isGroup: false, lastAt: null, messages: [] };
+    convs.set(contactJid, conv);
+  } else {
+    // Map conserva orden de inserción: re-insertar = marcar como más reciente (LRU).
+    convs.delete(contactJid);
+    convs.set(contactJid, conv);
+  }
+  if (meta.senderName) conv.senderName = meta.senderName;
+  if (meta.isGroup !== undefined) conv.isGroup = Boolean(meta.isGroup);
+  conv.lastAt = entry.timestamp;
+  conv.messages.push(entry);
+  if (conv.messages.length > CHAT_MSGS_PER_CONV) conv.messages.shift();
+  // Evicción: la conversación más antigua (primera del Map) sale.
+  if (convs.size > CHAT_CONVS_PER_CLIENT) {
+    const oldest = convs.keys().next().value;
+    convs.delete(oldest);
+  }
+}
+
+// Vista para GET /api/chat/recent — array serializable, más reciente primero.
+function getRecentConversations(clientId = null) {
+  const result = [];
+  for (const [cid, convs] of chatBuffer) {
+    if (clientId !== null && cid !== clientId) continue;
+    for (const conv of convs.values()) {
+      result.push({ clientId: cid, ...conv });
+    }
+  }
+  result.sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
+  return result;
+}
+
+// Emisión + registro unificado de mensajes SALIENTES (antes había 4 copias del
+// mismo objeto con distinto source: auto-reply/webhook-response/form-link/chatbot).
+function emitOutgoing(session, source, message) {
+  const contactJid = normalizeJid(message.to);
+  const payload = {
+    type: 'outgoing_message',
+    source,
+    sessionId: session.sessionId,
+    clientId: session.clientId,
+    timestamp: new Date().toISOString(),
+    message: { ...message, contactJid },
+  };
+  recordChatMessage(session.clientId, contactJid, {
+    direction: 'out',
+    id: message.id || null,
+    body: message.body,
+    source,
+    timestamp: payload.timestamp,
+  });
+  if (io) io.emit('message:outgoing', payload);
+  return payload;
+}
+
 // --- Estado "bot activo" por cliente (on/off manual + horario semanal) ---
 // Cache en memoria con TTL corto para no pegar a BD en cada mensaje entrante.
 // El cooldown evita spamear el aviso automático al mismo contacto fuera de horario.
@@ -399,6 +472,15 @@ async function connectSocket(session) {
       const remoteJid = msg.key.remoteJid;
       const isGroup = String(remoteJid || '').endsWith('@g.us');
 
+      // Identidad del contacto por TELÉFONO (estable aunque WhatsApp direccione por
+      // @lid): senderPn es el número real; si no viene, caemos al remoteJid.
+      // replyJid = el JID EXACTO al que responder (lo que mandó WhatsApp), para no
+      // arriesgar la entrega. Handoff, blacklist y el CHAT del panel casan por
+      // contactJid — por eso viaja también en el payload (el 'from' puede ser @lid
+      // y no casaría con el 'to' normalizado de los mensajes salientes).
+      const replyJid = remoteJid;
+      const contactJid = normalizeJid(msg.key.senderPn || remoteJid);
+
       const payload = {
         type: 'incoming_message',
         source: 'whatsapp-web',
@@ -409,6 +491,7 @@ async function connectSocket(session) {
         message: {
           id: msg.key.id || null,
           from: remoteJid,
+          contactJid,
           body: extractText(msg.message),
           type: messageType(msg.message),
           hasMedia: hasMedia(msg.message),
@@ -419,14 +502,17 @@ async function connectSocket(session) {
         },
       };
 
-      if (io) io.emit('message:incoming', payload);
+      recordChatMessage(session.clientId, contactJid, {
+        direction: 'in',
+        id: payload.message.id,
+        body: payload.message.body,
+        senderName: payload.message.senderName,
+        participant: payload.message.participant,
+        hasMedia: payload.message.hasMedia,
+        timestamp: payload.timestamp,
+      }, { senderName: payload.message.senderName, isGroup });
 
-      // Identidad del contacto por TELÉFONO (estable aunque WhatsApp direccione por
-      // @lid): senderPn es el número real; si no viene, caemos al remoteJid.
-      // replyJid = el JID EXACTO al que responder (lo que mandó WhatsApp), para no
-      // arriesgar la entrega. Handoff y blacklist casan/muestran por contactJid.
-      const replyJid = remoteJid;
-      const contactJid = normalizeJid(msg.key.senderPn || remoteJid);
+      if (io) io.emit('message:incoming', payload);
 
       // Blacklist: números marcados como "sin bot" (cliente/admin) → silencio
       // total. El bot los ignora por completo: ni reenvío a n8n ni aviso.
@@ -464,13 +550,8 @@ async function connectSocket(session) {
             const sent = await session.sock.sendMessage(replyJid, { text: botState.auto_reply_text });
             // Marca el cooldown SOLO tras enviar con éxito (un fallo no bloquea el reintento).
             markAutoReplySent(session.clientId, contactJid);
-            if (io) io.emit('message:outgoing', {
-              type: 'outgoing_message',
-              source: 'auto-reply',
-              sessionId: session.sessionId,
-              clientId: session.clientId,
-              timestamp: new Date().toISOString(),
-              message: { id: sent?.key?.id || null, to: replyJid, body: botState.auto_reply_text },
+            emitOutgoing(session, 'auto-reply', {
+              id: sent?.key?.id || null, to: replyJid, body: botState.auto_reply_text,
             });
           } catch (err) {
             console.error('auto-reply error:', err.message);
@@ -499,16 +580,9 @@ async function connectSocket(session) {
             for (let i = 0; i < chunks.length; i++) {
               try {
                 const sent = await session.sock.sendMessage(jid, { text: chunks[i] });
-                if (io) {
-                  io.emit('message:outgoing', {
-                    type: 'outgoing_message',
-                    source: 'webhook-response',
-                    sessionId: session.sessionId,
-                    clientId: session.clientId,
-                    timestamp: new Date().toISOString(),
-                    message: { id: sent?.key?.id || null, to: jid, body: chunks[i] },
-                  });
-                }
+                emitOutgoing(session, 'webhook-response', {
+                  id: sent?.key?.id || null, to: jid, body: chunks[i],
+                });
                 if (i < chunks.length - 1) {
                   await new Promise((r) => setTimeout(r, 800));
                 }
@@ -527,16 +601,9 @@ async function connectSocket(session) {
                 const formText = reply.form.title ? `${reply.form.title}:\n${formUrl}` : formUrl;
                 if (chunks.length > 0) await new Promise((r) => setTimeout(r, 800));
                 const sent = await session.sock.sendMessage(jid, { text: formText });
-                if (io) {
-                  io.emit('message:outgoing', {
-                    type: 'outgoing_message',
-                    source: 'form-link',
-                    sessionId: session.sessionId,
-                    clientId: session.clientId,
-                    timestamp: new Date().toISOString(),
-                    message: { id: sent?.key?.id || null, to: jid, body: formText },
-                  });
-                }
+                emitOutgoing(session, 'form-link', {
+                  id: sent?.key?.id || null, to: jid, body: formText,
+                });
               } catch (formErr) {
                 console.error('Error enviando enlace de formulario:', formErr.message);
               }
@@ -760,21 +827,11 @@ async function sendMessage(sessionId, to, text) {
 
   const sent = await session.sock.sendMessage(jid, { text: String(text) });
 
-  const payload = {
-    type: 'outgoing_message',
-    source: 'chatbot',
-    sessionId,
-    clientId: session.clientId,
-    timestamp: new Date().toISOString(),
-    message: {
-      id: sent?.key?.id || null,
-      to: jid,
-      body: text,
-    },
-  };
-
-  if (io) io.emit('message:outgoing', payload);
-  return payload;
+  return emitOutgoing(session, 'chatbot', {
+    id: sent?.key?.id || null,
+    to: jid,
+    body: text,
+  });
 }
 
 function listSessions() {
@@ -922,4 +979,5 @@ module.exports = {
   normalizeJid,
   emit,
   invalidateBotState,
+  getRecentConversations,
 };
