@@ -10,7 +10,7 @@
 }
 
 .sidebar {
-  background: rgba(20, 20, 27, 0.88);
+  background: rgba(255, 255, 255, 0.72);
   border-right: 1px solid var(--border);
   padding: 20px 14px;
   display: flex;
@@ -19,7 +19,7 @@
   position: sticky;
   top: 0;
   height: 100vh;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(20px) saturate(1.5);
 }
 
 .brand {
@@ -33,7 +33,7 @@
     height: 32px;
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 6px 18px rgba(236, 72, 153, 0.32);
+    box-shadow: 0 6px 18px rgba(15, 17, 21, 0.14);
     display: inline-flex;
 
     svg, img {
@@ -115,15 +115,16 @@
 }
 
 .nav a:hover {
-  background: var(--surface-2);
+  background: rgba(15, 17, 21, 0.04);
   color: var(--text);
   .ico { color: var(--text); opacity: 1; }
 }
 
 .nav a.active {
-  background: rgba(236, 72, 153, 0.10);
-  color: var(--accent);
-  .ico { color: var(--accent); opacity: 1; }
+  background: rgba(15, 17, 21, 0.05);
+  color: var(--text);
+  font-weight: 600;
+  .ico { color: var(--text); opacity: 1; }
 }
 
 .nav a.active::before {
@@ -135,7 +136,6 @@
   width: 3px;
   border-radius: 0 3px 3px 0;
   background: var(--accent);
-  box-shadow: 0 0 12px rgba(236, 72, 153, 0.6);
 }
 
 .sidebar-foot {
@@ -162,7 +162,7 @@
     flex-shrink: 0;
   }
 
-  &.ok .dot { background: var(--accent); box-shadow: 0 0 8px rgba(236, 72, 153, 0.6); }
+  &.ok .dot { background: var(--ok); box-shadow: 0 0 8px rgba(21, 128, 61, 0.4); }
   &.err .dot { background: var(--err); }
 }
 
@@ -176,13 +176,13 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: linear-gradient(135deg, rgba(236, 72, 153, 0.18), rgba(56, 189, 248, 0.10));
-    border: 1px solid rgba(236, 72, 153, 0.25);
+    background: linear-gradient(180deg, #232730, #0f0f0f);
+    border: 1px solid rgba(15, 17, 21, 0.2);
     display: grid;
     place-items: center;
     font-weight: 700;
     font-size: 0.82rem;
-    color: var(--accent);
+    color: #fff;
     flex-shrink: 0;
   }
 
@@ -224,11 +224,30 @@
     border-right: 0;
     border-bottom: 1px solid var(--border);
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 16px;
+    gap: 12px 16px;
     padding: 12px 16px;
   }
-  .nav-section { display: none; }
+  /* Nav visible en móvil: pills con scroll horizontal (antes desaparecía) */
+  .nav-section {
+    order: 3;
+    width: 100%;
+  }
+  .nav-label { display: none; }
+  .nav {
+    display: flex;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 2px;
+  }
+  .nav a {
+    flex: none;
+    border-radius: 999px;
+    padding: 7px 14px;
+    white-space: nowrap;
+  }
+  .nav a.active::before { display: none; }
   .sidebar-foot {
     flex-direction: row;
     border-top: 0;

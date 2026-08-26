@@ -52,12 +52,12 @@
 
 .event.incoming {
   border-left-color: var(--accent);
-  .dir { background: rgba(236, 72, 153, 0.16); color: var(--accent); }
+  .dir { background: var(--accent-soft); color: var(--accent-ink); }
 }
 
 .event.outgoing {
   border-left-color: var(--info);
-  .dir { background: rgba(56, 189, 248, 0.16); color: var(--info); }
+  .dir { background: rgba(3, 105, 161, 0.08); color: var(--info); }
 }
 
 @media (max-width: 980px) {

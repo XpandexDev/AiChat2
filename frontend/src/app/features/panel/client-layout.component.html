@@ -1,13 +1,15 @@
-<header class="panel-head">
-  <div class="brand">
-    <img src="/xpandex-wordmark.png" alt="Xpandex" class="brand-wordmark" />
-    <span class="panel-tag">Panel de cliente</span>
-  </div>
-  <div class="panel-user">
-    @if (client(); as c) {
-      <span class="who">{{ c.name }}</span>
-    }
-    <button class="ghost" (click)="logout()">Cerrar sesión</button>
+<header class="panel-head" [class.scrolled]="scrolled()">
+  <div class="panel-pill">
+    <div class="brand">
+      <img src="/xpandex-wordmark.png" alt="Xpandex" class="brand-wordmark" />
+      <span class="panel-tag">Panel de cliente</span>
+    </div>
+    <div class="panel-user">
+      @if (client(); as c) {
+        <span class="who">{{ c.name }}</span>
+      }
+      <button class="ghost" (click)="logout()">Cerrar sesión</button>
+    </div>
   </div>
 </header>
 

@@ -5,6 +5,7 @@ import {
   ClientPanelService, ClientMeClient, ClientSessionView, ScheduleWindow, SchedulePayload, BlacklistEntry, HandoffContact,
 } from '../../core/api/client-panel.service';
 import { errorToMessage } from '../../core/api/error';
+import { RevealDirective } from '../../shared/reveal.directive';
 
 interface DayRow {
   weekday: number;
@@ -21,7 +22,7 @@ const DAY_LABELS: Record<number, string> = {
 @Component({
   selector: 'app-client-dashboard',
   standalone: true,
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, DatePipe, RevealDirective],
   templateUrl: './client-dashboard.component.html',
   styleUrl: './client-dashboard.component.scss',
 })

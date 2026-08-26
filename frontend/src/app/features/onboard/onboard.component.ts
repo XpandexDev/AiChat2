@@ -1,11 +1,12 @@
 import { Component, Input, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { PairingService, PairingView } from '../../core/api/pairing.service';
 import { errorToMessage } from '../../core/api/error';
+import { SpotlightDirective } from '../../shared/spotlight.directive';
 
 @Component({
   selector: 'app-onboard',
   standalone: true,
-  imports: [],
+  imports: [SpotlightDirective],
   templateUrl: './onboard.component.html',
   styleUrl: './onboard.component.scss',
 })

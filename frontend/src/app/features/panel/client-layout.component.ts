@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, HostListener, inject, signal } from '@angular/core';
 import { Router, RouterOutlet } from '@angular/router';
 import { ClientAuthService } from '../../core/auth/client-auth.service';
 
@@ -14,6 +14,12 @@ export class ClientLayoutComponent {
   private readonly router = inject(Router);
 
   readonly client = this.auth.client;
+  readonly scrolled = signal(false);
+
+  @HostListener('window:scroll')
+  onScroll() {
+    this.scrolled.set(window.scrollY > 8);
+  }
 
   logout() {
     this.auth.logout().subscribe({

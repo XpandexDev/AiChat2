@@ -3,14 +3,46 @@
   min-height: 100vh;
 }
 
+/* Floating liquid-glass pill navbar */
 .panel-head {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  padding: 12px 16px;
+  transition: padding 0.45s var(--ease-out);
+
+  &.scrolled { padding: 8px 16px; }
+}
+
+.panel-pill {
+  width: 100%;
+  max-width: 1120px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 24px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  padding: 10px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.66);
+  backdrop-filter: blur(20px) saturate(1.5);
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.05);
+  transition: background 0.45s var(--ease-out), box-shadow 0.45s var(--ease-out);
+}
+
+.panel-head.scrolled .panel-pill {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(28px) saturate(1.5);
+  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-head,
+  .panel-pill { transition: none; }
 }
 
 .brand {
@@ -19,15 +51,16 @@
   gap: 12px;
 
   .brand-wordmark {
-    height: 28px;
+    height: 24px;
     width: auto;
     display: block;
   }
 
   .panel-tag {
     color: var(--text-dim);
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
   }
 }
@@ -38,15 +71,22 @@
   gap: 12px;
 
   .who {
-    color: var(--text-dim);
-    font-size: 0.9rem;
+    color: var(--text-2);
+    font-size: 0.88rem;
+    font-weight: 500;
   }
 }
 
 .panel-main {
   max-width: 860px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 92px 24px 48px;
   display: grid;
   gap: 18px;
+}
+
+@media (max-width: 560px) {
+  .brand .panel-tag { display: none; }
+  .panel-user .who { display: none; }
+  .panel-main { padding: 84px 16px 40px; }
 }

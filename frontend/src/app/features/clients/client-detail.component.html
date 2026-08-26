@@ -176,8 +176,8 @@
             <button class="danger" (click)="removeSession(s.sessionId)">Eliminar</button>
           </div>
           @if (s.qrDataUrl) {
-            <div style="background:#fff;padding:12px;border-radius:12px;display:flex;justify-content:center">
-              <img [src]="s.qrDataUrl" alt="QR {{ s.sessionId }}" style="width:220px;height:220px;image-rendering:pixelated" />
+            <div class="qr-frame">
+              <img [src]="s.qrDataUrl" alt="QR {{ s.sessionId }}" />
             </div>
           }
           @if (s.lastError) {

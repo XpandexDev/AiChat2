@@ -31,14 +31,15 @@
     width: 56px;
     height: 56px;
     border-radius: 14px;
-    box-shadow: 0 10px 28px rgba(236, 72, 153, 0.32);
+    box-shadow: 0 10px 28px rgba(15, 17, 21, 0.14);
   }
 
   h1 {
     margin: 0;
+    font-family: var(--font-display);
     font-size: 1.2rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: -0.01em;
   }
 
   p {
@@ -52,7 +53,7 @@
   margin: 0;
   font-size: 0.95rem;
   color: var(--text);
-  strong { color: var(--accent); }
+  strong { color: var(--accent-ink); }
 }
 
 .state-block {
@@ -91,19 +92,19 @@
   margin: 0 auto;
 
   &.ok {
-    background: rgba(236, 72, 153, 0.15);
-    color: var(--accent);
-    border: 1px solid rgba(236, 72, 153, 0.4);
+    background: rgba(21, 128, 61, 0.08);
+    color: var(--ok);
+    border: 1px solid rgba(21, 128, 61, 0.3);
   }
   &.warn {
-    background: rgba(245, 165, 36, 0.15);
+    background: rgba(180, 83, 9, 0.08);
     color: var(--warn);
-    border: 1px solid rgba(245, 165, 36, 0.4);
+    border: 1px solid rgba(180, 83, 9, 0.3);
   }
   &.err {
-    background: rgba(239, 68, 68, 0.15);
+    background: rgba(220, 38, 38, 0.07);
     color: var(--err);
-    border: 1px solid rgba(239, 68, 68, 0.4);
+    border: 1px solid rgba(220, 38, 38, 0.3);
   }
 }
 
@@ -118,9 +119,9 @@
   letter-spacing: 0.04em;
 
   &.progress {
-    background: rgba(236, 72, 153, 0.12);
-    color: var(--accent);
-    border: 1px solid rgba(236, 72, 153, 0.3);
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    border: 1px solid rgba(233, 30, 140, 0.3);
   }
 }
 
@@ -169,7 +170,7 @@
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.35);
+  box-shadow: 0 4px 12px rgba(233, 30, 140, 0.22);
 }
 
 .qr-block {
@@ -181,11 +182,12 @@
   .qr {
     background: #fff;
     padding: 12px;
+    border: 1px solid var(--border);
     border-radius: 16px;
     width: 248px;
     height: 248px;
     image-rendering: pixelated;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-md);
   }
 
   .qr.placeholder {
@@ -239,7 +241,7 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 2.5px solid rgba(236, 72, 153, 0.2);
+  border: 2.5px solid rgba(233, 30, 140, 0.2);
   border-top-color: var(--accent);
   animation: spin 0.9s linear infinite;
 }

@@ -3,11 +3,13 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ClientAuthService } from '../../core/auth/client-auth.service';
 import { errorToMessage } from '../../core/api/error';
+import { ArrowButtonComponent } from '../../shared/arrow-button.component';
+import { SpotlightDirective } from '../../shared/spotlight.directive';
 
 @Component({
   selector: 'app-client-login',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, ArrowButtonComponent, SpotlightDirective],
   templateUrl: './client-login.component.html',
   styleUrl: './client-login.component.scss',
 })

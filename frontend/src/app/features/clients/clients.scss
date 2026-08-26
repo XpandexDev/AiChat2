@@ -73,7 +73,24 @@
     flex: 1;
     min-width: 220px;
     font-size: 0.78rem;
+    font-family: var(--font-mono);
     background: var(--surface-2);
     cursor: text;
+  }
+}
+
+.qr-frame {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+
+  img {
+    width: 220px;
+    height: 220px;
+    image-rendering: pixelated;
   }
 }
