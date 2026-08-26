@@ -1,7 +1,6 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { DatePipe } from '@angular/common';
 import { SessionsService } from '../../core/api/sessions.service';
 import { ClientsService, Client } from '../../core/api/clients.service';
 import { errorToMessage } from '../../core/api/error';
@@ -9,7 +8,7 @@ import { errorToMessage } from '../../core/api/error';
 @Component({
   selector: 'app-sessions-list',
   standalone: true,
-  imports: [RouterLink, FormsModule, DatePipe],
+  imports: [RouterLink, FormsModule],
   templateUrl: './sessions-list.component.html',
   styleUrl: './sessions.scss',
 })

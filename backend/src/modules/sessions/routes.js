@@ -20,6 +20,19 @@ router.get('/', (req, res) => {
   res.json(manager.listSessions());
 });
 
+// --- Chat en vivo ---
+// Conversaciones recientes desde el ring buffer EN RAM del manager (sin BD:
+// contexto para hidratar la vista de chat al abrir; un reinicio lo vacía).
+// (Antes de /:sessionId para que "chat" no se interprete como un sessionId.)
+router.get('/chat/recent', (req, res) => {
+  const clientId = req.query.clientId ? Number(req.query.clientId) : null;
+  try {
+    return res.json({ conversations: manager.getRecentConversations(clientId) });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Handoff a humano ---
 // Contactos en modo humano, para hidratar el panel al cargar.
 // (Antes de /:sessionId para que "handoff" no se interprete como un sessionId.)

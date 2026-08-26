@@ -1,0 +1,61 @@
+@if (!conv) {
+  <div class="thread-empty empty">
+    <p>Elige una conversación</p>
+    <span>Los mensajes en vivo aparecerán aquí.</span>
+  </div>
+} @else {
+  <header class="thread-head">
+    <div class="who">
+      <strong>{{ contactLabel }}</strong>
+      <span class="mono dim">{{ contactPhone }}</span>
+      @if (conv.isGroup) {
+        <span class="pill">Grupo</span>
+      }
+    </div>
+    @if (handoff) {
+      <div class="handoff-box">
+        <span class="badge warn" title="{{ handoff.motivo || '' }}">Humano al mando</span>
+        <button class="ghost mini" type="button" (click)="resume.emit()">Devolver al bot</button>
+      </div>
+    }
+  </header>
+
+  @if (handoff?.resumen) {
+    <p class="handoff-resumen small dim">{{ handoff?.motivo }} — {{ handoff?.resumen }}</p>
+  }
+
+  <div class="thread-scroll" #scroller>
+    @for (m of conv.messages; track $index) {
+      <div class="bubble-row {{ m.direction }}">
+        <div class="bubble {{ m.direction }}">
+          @if (conv.isGroup && m.direction === 'in' && m.senderName) {
+            <span class="bubble-sender">{{ m.senderName }}</span>
+          }
+          <span class="bubble-body">{{ m.body || (m.hasMedia ? '📎 (adjunto)' : '') }}</span>
+          <span class="bubble-meta">
+            @if (m.direction === 'out' && m.source) {
+              <span class="src">{{ sourceLabel(m.source) }}</span>
+            }
+            {{ m.timestamp | date: 'HH:mm' }}
+          </span>
+        </div>
+      </div>
+    }
+  </div>
+
+  <footer class="thread-composer">
+    @if (canSend) {
+      <textarea
+        rows="1"
+        [(ngModel)]="draft"
+        placeholder="Escribe un mensaje…"
+        (keydown.enter)="$event.preventDefault(); submit()"
+      ></textarea>
+      <button class="primary" type="button" (click)="submit()" [disabled]="sending || !draft.trim()">
+        {{ sending ? 'Enviando…' : 'Enviar' }}
+      </button>
+    } @else {
+      <p class="dim small composer-hint">{{ sendHint || 'Sin sesión de WhatsApp lista para responder.' }}</p>
+    }
+  </footer>
+}

@@ -5,12 +5,16 @@ import { DatePipe } from '@angular/common';
 import { Client, ClientsService, BlacklistEntry } from '../../core/api/clients.service';
 import { SessionsService, WaSession } from '../../core/api/sessions.service';
 import { WebhooksService } from '../../core/api/webhooks.service';
+import { ChatService, Conversation } from '../../core/api/chat.service';
+import { ThreadComponent } from '../chat/thread.component';
 import { errorToMessage } from '../../core/api/error';
+
+type DetailTab = 'resumen' | 'chat' | 'whatsapp' | 'acceso' | 'integracion';
 
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [RouterLink, FormsModule, DatePipe],
+  imports: [RouterLink, FormsModule, DatePipe, ThreadComponent],
   templateUrl: './client-detail.component.html',
   styleUrl: './clients.scss',
 })
@@ -20,7 +24,18 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
   private readonly clientsApi = inject(ClientsService);
   private readonly sessionsApi = inject(SessionsService);
   private readonly webhooks = inject(WebhooksService);
+  readonly chat = inject(ChatService);
   private readonly router = inject(Router);
+
+  // --- Pestañas ---
+  readonly tab = signal<DetailTab>('resumen');
+  readonly tabs: { key: DetailTab; label: string }[] = [
+    { key: 'resumen', label: 'Resumen' },
+    { key: 'chat', label: 'Conversaciones' },
+    { key: 'whatsapp', label: 'WhatsApp' },
+    { key: 'acceso', label: 'Acceso' },
+    { key: 'integracion', label: 'Integración' },
+  ];
 
   readonly client = signal<Client | null>(null);
   readonly loading = signal(false);
@@ -112,9 +127,73 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
   newSessionId = '';
   newSessionMode: 'normal' | 'business' = 'normal';
 
+  // --- Conversaciones del cliente (pestaña chat, reusa el store global) ---
+  readonly selectedContact = signal<string | null>(null);
+  readonly sending = signal(false);
+
+  readonly clientConvs = computed<Conversation[]>(() => {
+    return this.chat.byClient().get(Number(this.id)) || [];
+  });
+
+  readonly selectedConv = computed<Conversation | null>(() => {
+    const contact = this.selectedContact();
+    if (!contact) return null;
+    return this.clientConvs().find((c) => c.contactJid === contact) || null;
+  });
+
+  readonly selectedHandoff = computed(() => {
+    const contact = this.selectedContact();
+    if (!contact) return undefined;
+    return this.chat.isHandoff(Number(this.id), contact);
+  });
+
+  readonly clientHandoffs = computed(() =>
+    this.sessionsApi.handoffs().filter((h) => h.clientId === Number(this.id)),
+  );
+
+  readonly readySession = computed(() =>
+    this.clientSessions().find((s) => s.status === 'ready') || null,
+  );
+
+  selectContact(contactJid: string) {
+    this.selectedContact.set(contactJid);
+    this.chat.markRead(Number(this.id), contactJid);
+  }
+
+  sendChat(text: string) {
+    const session = this.readySession();
+    const contact = this.selectedContact();
+    if (!session || !contact) return;
+    this.sending.set(true);
+    this.sessionsApi.sendMessage(session.sessionId, contact, text).subscribe({
+      next: () => this.sending.set(false),
+      error: (err) => {
+        this.sending.set(false);
+        this.error.set(errorToMessage(err, 'No se pudo enviar el mensaje'));
+      },
+    });
+  }
+
+  resumeHandoff(contactJid: string) {
+    this.chat.resumeHandoff(Number(this.id), contactJid).subscribe({
+      next: () => this.notice.set('Conversación devuelta al bot'),
+      error: (err) => this.error.set(errorToMessage(err, 'No se pudo devolver al bot')),
+    });
+  }
+
+  contactLabel(conv: Conversation): string {
+    return conv.senderName || this.contactPhone(conv.contactJid);
+  }
+
+  contactPhone(jid: string): string {
+    const num = String(jid || '').split('@')[0];
+    return /^\d{6,}$/.test(num) ? `+${num}` : num;
+  }
+
   ngOnInit() {
     if (!this.id) return;
     this.load();
+    this.chat.hydrate();
   }
 
   ngOnDestroy() {}

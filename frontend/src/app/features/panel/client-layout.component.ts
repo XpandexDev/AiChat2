@@ -16,6 +16,19 @@ export class ClientLayoutComponent {
   readonly client = this.auth.client;
   readonly scrolled = signal(false);
 
+  // Sub-navegación por secciones del dashboard (anclas, misma página).
+  readonly sections = [
+    { id: 'conversaciones', label: 'Conversaciones' },
+    { id: 'bot', label: 'Bot' },
+    { id: 'whatsapp', label: 'WhatsApp' },
+    { id: 'horario', label: 'Horario' },
+    { id: 'sinbot', label: 'Números sin bot' },
+  ];
+
+  scrollTo(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   @HostListener('window:scroll')
   onScroll() {
     this.scrolled.set(window.scrollY > 8);

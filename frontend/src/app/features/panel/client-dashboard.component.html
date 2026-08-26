@@ -5,7 +5,7 @@
   <p class="success-banner">{{ msg }}</p>
 }
 
-<section class="card" xpReveal [revealDelay]="0">
+<section id="conversaciones" class="card" xpReveal [revealDelay]="0">
   <div class="card-head">
     <h2>Contactos con humano al mando</h2>
     <button class="ghost mini" (click)="loadHandoff()">Actualizar</button>
@@ -55,7 +55,7 @@
 </section>
 
 @if (me(); as c) {
-  <section class="card" xpReveal [revealDelay]="60">
+  <section id="bot" class="card" xpReveal [revealDelay]="60">
     <div class="card-head">
       <h2>Estado del bot</h2>
       <span class="badge {{ c.botEnabled ? 'ok' : 'mute' }}">{{ c.botEnabled ? 'Activo' : 'Desactivado' }}</span>
@@ -91,7 +91,7 @@
     }
   </section>
 
-  <section class="card" xpReveal [revealDelay]="120">
+  <section id="whatsapp" class="card" xpReveal [revealDelay]="120">
     <h2>Activación de WhatsApp</h2>
     <p class="muted" style="margin-top:4px;font-size:.9rem">
       Abre tu página de activación para escanear el QR y vincular tu número.
@@ -105,7 +105,7 @@
     }
   </section>
 
-  <section class="card" xpReveal [revealDelay]="180">
+  <section id="horario" class="card" xpReveal [revealDelay]="180">
     <h2>Horario del bot</h2>
     <div class="sched-top">
       <label class="inline">
@@ -161,7 +161,7 @@
     </div>
   </section>
 
-  <section class="card" xpReveal [revealDelay]="240">
+  <section id="sinbot" class="card" xpReveal [revealDelay]="240">
     <h2>Números sin bot</h2>
     <p class="muted" style="margin-top:4px;font-size:.9rem">
       El bot ignora por completo a estos números (no responde nada). Útil para contactos que no deben recibir respuestas automáticas.

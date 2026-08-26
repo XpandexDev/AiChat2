@@ -1,66 +1,24 @@
-.events {
-  display: grid;
-  gap: 8px;
-  margin-top: 14px;
-}
+/* sessions-specific: el feed de eventos se sustituyó por /chat (Conversaciones).
+   Aquí solo queda el envío avanzado plegable. */
 
-.event {
-  display: grid;
-  grid-template-columns: 56px 130px 180px 1fr 70px;
-  gap: 10px;
-  align-items: center;
-  padding: 10px 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-left-width: 3px;
-  border-radius: 10px;
-  font-size: 0.86rem;
-}
+.advanced-send {
+  summary {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    cursor: pointer;
+    list-style: none;
 
-.event .dir {
-  font-weight: 700;
-  font-size: 0.74rem;
-  letter-spacing: 0.06em;
-  padding: 3px 8px;
-  border-radius: 999px;
-  text-align: center;
-}
+    &::-webkit-details-marker { display: none; }
+    &::before {
+      content: '▸';
+      color: var(--text-dim);
+      transition: transform 0.2s var(--ease-out);
+    }
 
-.event .ev-session {
-  color: var(--text-dim);
-  font-size: 0.78rem;
-}
+    h2 { display: inline; font-size: 1.02rem; }
+  }
 
-.event .ev-peer {
-  color: var(--text-dim);
-  font-size: 0.82rem;
-}
-
-.event .ev-body {
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.event .ev-time {
-  text-align: right;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-  font-size: 0.78rem;
-}
-
-.event.incoming {
-  border-left-color: var(--accent);
-  .dir { background: var(--accent-soft); color: var(--accent-ink); }
-}
-
-.event.outgoing {
-  border-left-color: var(--info);
-  .dir { background: rgba(3, 105, 161, 0.08); color: var(--info); }
-}
-
-@media (max-width: 980px) {
-  .event { grid-template-columns: 50px 1fr 1fr 60px; }
-  .event .ev-body { grid-column: 1 / -1; }
+  &[open] summary::before { transform: rotate(90deg); }
 }

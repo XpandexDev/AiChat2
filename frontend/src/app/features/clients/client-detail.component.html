@@ -9,9 +9,13 @@
   <header class="detail-head">
     <div>
       <a class="muted" routerLink="/clients">← Clientes</a>
-      <h1 style="margin-top:6px">{{ c.name }}</h1>
+      <h1 class="detail-title">{{ c.name }}</h1>
       <div class="meta">
         @if (c.isActive) { <span class="badge ok">Activo</span> } @else { <span class="badge mute">Inactivo</span> }
+        @if (c.botEnabled) { <span class="badge ok">Bot ON</span> } @else { <span class="badge mute">Bot OFF</span> }
+        @if (clientHandoffs().length > 0) {
+          <span class="badge warn">{{ clientHandoffs().length }} en humano</span>
+        }
         @for (t of c.tags; track t) { <span class="tag">{{ t }}</span> }
         <span class="dim mono">#{{ c.id }}</span>
       </div>
@@ -21,7 +25,6 @@
         {{ c.isActive ? 'Desactivar' : 'Activar' }}
       </button>
       <a class="ghost btn-link" [routerLink]="['/clients', c.id, 'edit']">Editar</a>
-      <button class="danger" (click)="deleteClient()">Borrar</button>
     </div>
   </header>
 
@@ -32,159 +35,288 @@
     <p class="success-banner">{{ msg }}</p>
   }
 
-  <div class="detail-grid">
-    <section class="card">
-      <h2>Información</h2>
-      <dl class="kv" style="margin-top:14px">
-        <dt>Email</dt><dd>{{ c.email || '—' }}</dd>
-        <dt>Teléfono</dt><dd>{{ c.phone || '—' }}</dd>
-        <dt>Descripción</dt><dd>{{ c.description || '—' }}</dd>
-        <dt>Creado</dt><dd>{{ c.createdAt | date: 'medium' }}</dd>
-        <dt>Actualizado</dt><dd>{{ c.updatedAt | date: 'medium' }}</dd>
-      </dl>
-
-      <h2 style="margin-top:24px">Enlace de vinculación</h2>
-      <p class="muted" style="margin-top:4px;font-size:.85rem">
-        Comparte este enlace con el cliente. Verá una página guiada para escanear su QR de WhatsApp.
-      </p>
-      @if (c.pairingToken) {
-        <div class="pairing-url">
-          <input readonly [value]="pairingUrl(c.pairingToken)" class="mono" />
-          <button class="ghost" (click)="copyPairingUrl()">Copiar</button>
-          <a class="ghost btn-link" [href]="pairingUrl(c.pairingToken)" target="_blank" rel="noopener">Abrir</a>
-        </div>
-        <button class="link" style="margin-top:8px" (click)="regeneratePairing()" [disabled]="regenerating()">
-          {{ regenerating() ? 'Regenerando…' : 'Regenerar enlace (invalida el anterior)' }}
-        </button>
-      } @else {
-        <p class="muted small">Sin token generado.</p>
-      }
-
-      <h2 style="margin-top:24px">Acceso al panel del cliente</h2>
-      <p class="muted" style="margin-top:4px;font-size:.85rem">
-        El cliente entra en su panel con su email y la contraseña que le asignes aquí.
-      </p>
-      <div class="meta" style="margin-top:8px">
-        @if (c.passwordConfigured) {
-          <span class="badge ok">Contraseña configurada</span>
-        } @else {
-          <span class="badge mute">Sin contraseña</span>
+  <nav class="tabs">
+    @for (t of tabs; track t.key) {
+      <button
+        type="button"
+        class="tab"
+        [class.active]="tab() === t.key"
+        (click)="tab.set(t.key)"
+      >
+        {{ t.label }}
+        @if (t.key === 'chat' && clientConvs().length > 0) {
+          <span class="tab-count">{{ clientConvs().length }}</span>
         }
-      </div>
-      <div class="form-grid" style="margin-top:10px;grid-template-columns:1fr auto;align-items:end">
-        <label>
-          {{ c.passwordConfigured ? 'Nueva contraseña' : 'Contraseña' }}
-          <input type="password" [(ngModel)]="newPassword" autocomplete="new-password" placeholder="mínimo 8 caracteres" />
-        </label>
-        <button class="primary" (click)="assignPassword()" [disabled]="savingPassword()">
-          {{ savingPassword() ? 'Guardando…' : (c.passwordConfigured ? 'Resetear' : 'Asignar') }}
-        </button>
-      </div>
-      <div class="pairing-url" style="margin-top:10px">
-        <input readonly [value]="panelUrl()" class="mono" />
-        <a class="ghost btn-link" [href]="panelUrl()" target="_blank" rel="noopener">Abrir panel</a>
-      </div>
+      </button>
+    }
+  </nav>
 
-      <h2 style="margin-top:24px">Webhook</h2>
-      <dl class="kv" style="margin-top:14px">
-        <dt>URL entrante</dt>
-        <dd class="mono">{{ c.webhookIncomingUrl || '— (no configurado)' }}</dd>
-        <dt>Secret</dt>
-        <dd>{{ c.webhookSecretConfigured ? '••• configurado' : '— (sin secret)' }}</dd>
-      </dl>
-      @if (c.webhookIncomingUrl) {
-        <div style="margin-top:14px;display:flex;gap:8px">
-          <button class="ghost" (click)="testWebhook()" [disabled]="testing()">
-            {{ testing() ? 'Probando...' : 'Probar webhook' }}
-          </button>
-        </div>
-      }
+  @switch (tab()) {
+    <!-- ==================== RESUMEN ==================== -->
+    @case ('resumen') {
+      <div class="detail-grid">
+        <section class="card">
+          <h2>Información</h2>
+          <dl class="kv gap-top">
+            <dt>Email</dt><dd>{{ c.email || '—' }}</dd>
+            <dt>Teléfono</dt><dd>{{ c.phone || '—' }}</dd>
+            <dt>Descripción</dt><dd>{{ c.description || '—' }}</dd>
+            <dt>Creado</dt><dd>{{ c.createdAt | date: 'medium' }}</dd>
+            <dt>Actualizado</dt><dd>{{ c.updatedAt | date: 'medium' }}</dd>
+          </dl>
 
-      <h2 style="margin-top:24px">Números sin bot (blacklist)</h2>
-      <p class="muted" style="margin-top:4px;font-size:.85rem">
-        El bot ignora por completo a estos números (no responde nada).
-      </p>
-      <div class="form-grid" style="margin-top:10px;grid-template-columns:1fr 1.2fr auto;align-items:end">
-        <label>
-          Número
-          <input [(ngModel)]="newBlNumber" placeholder="34600111222" />
-        </label>
-        <label>
-          Nota (opcional)
-          <input [(ngModel)]="newBlNote" placeholder="motivo" />
-        </label>
-        <button class="primary" (click)="addBlacklist()" [disabled]="savingBl()">Añadir</button>
-      </div>
-      @if (!blacklist().length) {
-        <p class="muted small" style="margin-top:10px">Sin números en la lista.</p>
-      } @else {
-        <table class="data" style="margin-top:10px">
-          <thead><tr><th>Número</th><th>Nota</th><th></th></tr></thead>
-          <tbody>
-            @for (b of blacklist(); track b.contactJid) {
-              <tr>
-                <td class="mono">{{ contactNumber(b.contactJid) }}</td>
-                <td>{{ b.note || '—' }}</td>
-                <td class="right"><button class="danger" (click)="removeBlacklist(b.contactJid)">Quitar</button></td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      }
-    </section>
+          <h2 class="block-title">Estado del bot</h2>
+          <dl class="kv gap-top">
+            <dt>Bot</dt>
+            <dd>
+              @if (c.botEnabled) { <span class="badge ok">Encendido</span> }
+              @else { <span class="badge mute">Apagado</span> }
+              <span class="dim small"> — lo gestiona el cliente desde su panel</span>
+            </dd>
+            <dt>Horario</dt>
+            <dd>{{ c.scheduleEnabled ? ('Con horario (' + (c.timezone || 'Europe/Madrid') + ')') : '24/7 (sin restricción)' }}</dd>
+            <dt>Aviso fuera de horario</dt>
+            <dd>{{ c.autoReplyText || '—' }}</dd>
+          </dl>
+        </section>
 
-    <section class="card">
-      <h2>Sesiones WhatsApp</h2>
-      <p class="muted" style="margin-top:4px;font-size:.88rem">
-        Cada sesión es un número de WhatsApp vinculado a este cliente.
-      </p>
-
-      <div class="form-grid" style="margin-top:14px;grid-template-columns:1.4fr 1fr auto;align-items:end">
-        <label>
-          Session ID
-          <input [(ngModel)]="newSessionId" placeholder="bot-main" />
-        </label>
-        <label>
-          Modo
-          <select [(ngModel)]="newSessionMode">
-            <option value="normal">Normal</option>
-            <option value="business">Business</option>
-          </select>
-        </label>
-        <button class="primary" (click)="startSession()" [disabled]="!c.isActive">Iniciar</button>
-      </div>
-      @if (!c.isActive) {
-        <p class="muted" style="margin-top:8px;font-size:.85rem">
-          Activa el cliente para poder iniciar sesiones.
-        </p>
-      }
-
-      <div class="sessions-block" style="margin-top:18px">
-        @if (!clientSessions().length) {
-          <div class="empty">
-            <p>Sin sesiones aún</p>
-            <span>Arranca una sesión y aparecerá el QR para escanear.</span>
-          </div>
-        }
-        @for (s of clientSessions(); track s.sessionId) {
-          <div class="session-row">
-            <span class="id">{{ s.sessionId }}</span>
-            <span class="badge {{ statusVariant(s.status) }}">{{ statusLabel(s.status) }}</span>
-            @if (s.connectedNumber) { <span class="small">📱 {{ s.connectedNumber }}</span> }
-            <span class="grow"></span>
-            <button class="ghost" (click)="stopSession(s.sessionId)">Parar</button>
-            <button class="danger" (click)="removeSession(s.sessionId)">Eliminar</button>
-          </div>
-          @if (s.qrDataUrl) {
-            <div class="qr-frame">
-              <img [src]="s.qrDataUrl" alt="QR {{ s.sessionId }}" />
+        <section class="card">
+          <h2>Atención humana</h2>
+          <p class="muted gap-top-sm small">Contactos de este cliente con el bot en pausa (handoff).</p>
+          @if (!clientHandoffs().length) {
+            <div class="empty gap-top">
+              <p>Nadie en modo humano</p>
+              <span>Cuando el bot derive una conversación, aparecerá aquí.</span>
             </div>
+          } @else {
+            <table class="data gap-top">
+              <thead><tr><th>Contacto</th><th>Motivo</th><th></th></tr></thead>
+              <tbody>
+                @for (h of clientHandoffs(); track h.contactJid) {
+                  <tr>
+                    <td class="mono">{{ contactPhone(h.contactJid) }}</td>
+                    <td class="small">{{ h.motivo || '—' }}</td>
+                    <td class="right">
+                      <button class="ghost mini" (click)="resumeHandoff(h.contactJid)">Devolver al bot</button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
           }
-          @if (s.lastError) {
-            <p class="error-banner" style="margin-top:0">⚠ {{ s.lastError }}</p>
-          }
-        }
+
+          <div class="danger-zone">
+            <h3>Zona peligrosa</h3>
+            <p class="dim small">Borra el cliente, sus sesiones de WhatsApp y sus credenciales. No se puede deshacer.</p>
+            <button class="danger" (click)="deleteClient()">Borrar cliente</button>
+          </div>
+        </section>
       </div>
-    </section>
-  </div>
+    }
+
+    <!-- ==================== CONVERSACIONES ==================== -->
+    @case ('chat') {
+      <div class="card conv-card">
+        <aside class="conv-list">
+          @for (conv of clientConvs(); track conv.contactJid) {
+            <button
+              type="button"
+              class="conv-item"
+              [class.selected]="selectedContact() === conv.contactJid"
+              (click)="selectContact(conv.contactJid)"
+            >
+              <span class="conv-main">
+                <strong>{{ contactLabel(conv) }}</strong>
+                @if (chat.isHandoff(conv.clientId, conv.contactJid)) {
+                  <span class="badge warn">Humano</span>
+                }
+                <span class="dim conv-prev">{{ conv.lastBody }}</span>
+              </span>
+              <span class="conv-side">
+                <span class="dim small">{{ conv.lastAt | date: 'HH:mm' }}</span>
+                @if (conv.unread > 0) { <span class="unread-mini">{{ conv.unread }}</span> }
+              </span>
+            </button>
+          } @empty {
+            <p class="dim small pad">Sin conversaciones recientes. Aparecerán al llegar mensajes (en vivo, sin histórico persistente).</p>
+          }
+        </aside>
+        <section class="conv-thread">
+          <app-chat-thread
+            [conv]="selectedConv()"
+            [contactLabel]="selectedConv() ? contactLabel(selectedConv()!) : ''"
+            [contactPhone]="selectedConv() ? contactPhone(selectedConv()!.contactJid) : ''"
+            [handoff]="selectedHandoff()"
+            [canSend]="!!readySession()"
+            [sendHint]="'Este cliente no tiene una sesión de WhatsApp conectada para responder.'"
+            [sending]="sending()"
+            (send)="sendChat($event)"
+            (resume)="selectedContact() && resumeHandoff(selectedContact()!)"
+          />
+        </section>
+      </div>
+    }
+
+    <!-- ==================== WHATSAPP ==================== -->
+    @case ('whatsapp') {
+      <div class="detail-grid">
+        <section class="card">
+          <h2>Sesiones WhatsApp</h2>
+          <p class="muted gap-top-sm small">Cada sesión es un número de WhatsApp vinculado a este cliente.</p>
+
+          <div class="form-grid form-inline-3 gap-top">
+            <label>
+              Session ID
+              <input [(ngModel)]="newSessionId" placeholder="bot-main" />
+            </label>
+            <label>
+              Modo
+              <select [(ngModel)]="newSessionMode">
+                <option value="normal">Normal</option>
+                <option value="business">Business</option>
+              </select>
+            </label>
+            <button class="primary" (click)="startSession()" [disabled]="!c.isActive">Iniciar</button>
+          </div>
+          @if (!c.isActive) {
+            <p class="muted small gap-top-sm">Activa el cliente para poder iniciar sesiones.</p>
+          }
+
+          <div class="sessions-block gap-top">
+            @if (!clientSessions().length) {
+              <div class="empty">
+                <p>Sin sesiones aún</p>
+                <span>Arranca una sesión y aparecerá el QR para escanear.</span>
+              </div>
+            }
+            @for (s of clientSessions(); track s.sessionId) {
+              <div class="session-row">
+                <span class="id">{{ s.sessionId }}</span>
+                <span class="badge {{ statusVariant(s.status) }}">{{ statusLabel(s.status) }}</span>
+                @if (s.connectedNumber) { <span class="small">📱 {{ s.connectedNumber }}</span> }
+                <span class="grow"></span>
+                <button class="ghost" (click)="stopSession(s.sessionId)">Parar</button>
+                <button class="danger" (click)="removeSession(s.sessionId)">Eliminar</button>
+              </div>
+              @if (s.qrDataUrl) {
+                <div class="qr-frame">
+                  <img [src]="s.qrDataUrl" alt="QR {{ s.sessionId }}" />
+                </div>
+              }
+              @if (s.lastError) {
+                <p class="error-banner no-gap">⚠ {{ s.lastError }}</p>
+              }
+            }
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Números sin bot (blacklist)</h2>
+          <p class="muted gap-top-sm small">El bot ignora por completo a estos números (no responde nada).</p>
+          <div class="form-grid form-inline-3 gap-top">
+            <label>
+              Número
+              <input [(ngModel)]="newBlNumber" placeholder="34600111222" />
+            </label>
+            <label>
+              Nota (opcional)
+              <input [(ngModel)]="newBlNote" placeholder="motivo" />
+            </label>
+            <button class="primary" (click)="addBlacklist()" [disabled]="savingBl()">Añadir</button>
+          </div>
+          @if (!blacklist().length) {
+            <p class="muted small gap-top-sm">Sin números en la lista.</p>
+          } @else {
+            <table class="data gap-top">
+              <thead><tr><th>Número</th><th>Nota</th><th></th></tr></thead>
+              <tbody>
+                @for (b of blacklist(); track b.contactJid) {
+                  <tr>
+                    <td class="mono">{{ contactNumber(b.contactJid) }}</td>
+                    <td>{{ b.note || '—' }}</td>
+                    <td class="right"><button class="danger" (click)="removeBlacklist(b.contactJid)">Quitar</button></td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </section>
+      </div>
+    }
+
+    <!-- ==================== ACCESO ==================== -->
+    @case ('acceso') {
+      <div class="detail-grid">
+        <section class="card">
+          <h2>Enlace de vinculación</h2>
+          <p class="muted gap-top-sm small">
+            Comparte este enlace con el cliente. Verá una página guiada para escanear su QR de WhatsApp.
+          </p>
+          @if (c.pairingToken) {
+            <div class="pairing-url">
+              <input readonly [value]="pairingUrl(c.pairingToken)" class="mono" />
+              <button class="ghost" (click)="copyPairingUrl()">Copiar</button>
+              <a class="ghost btn-link" [href]="pairingUrl(c.pairingToken)" target="_blank" rel="noopener">Abrir</a>
+            </div>
+            <button class="link gap-top-sm" (click)="regeneratePairing()" [disabled]="regenerating()">
+              {{ regenerating() ? 'Regenerando…' : 'Regenerar enlace (invalida el anterior)' }}
+            </button>
+          } @else {
+            <p class="muted small">Sin token generado.</p>
+          }
+        </section>
+
+        <section class="card">
+          <h2>Acceso al panel del cliente</h2>
+          <p class="muted gap-top-sm small">
+            El cliente entra en su panel con su email y la contraseña que le asignes aquí.
+          </p>
+          <div class="meta gap-top-sm">
+            @if (c.passwordConfigured) {
+              <span class="badge ok">Contraseña configurada</span>
+            } @else {
+              <span class="badge mute">Sin contraseña</span>
+            }
+          </div>
+          <div class="form-grid form-inline-2 gap-top-sm">
+            <label>
+              {{ c.passwordConfigured ? 'Nueva contraseña' : 'Contraseña' }}
+              <input type="password" [(ngModel)]="newPassword" autocomplete="new-password" placeholder="mínimo 8 caracteres" />
+            </label>
+            <button class="primary" (click)="assignPassword()" [disabled]="savingPassword()">
+              {{ savingPassword() ? 'Guardando…' : (c.passwordConfigured ? 'Resetear' : 'Asignar') }}
+            </button>
+          </div>
+          <div class="pairing-url gap-top-sm">
+            <input readonly [value]="panelUrl()" class="mono" />
+            <a class="ghost btn-link" [href]="panelUrl()" target="_blank" rel="noopener">Abrir panel</a>
+          </div>
+        </section>
+      </div>
+    }
+
+    <!-- ==================== INTEGRACIÓN ==================== -->
+    @case ('integracion') {
+      <section class="card">
+        <h2>Webhook (n8n)</h2>
+        <p class="muted gap-top-sm small">
+          Los mensajes entrantes de este cliente se reenvían a esta URL; la respuesta vuelve por WhatsApp.
+        </p>
+        <dl class="kv gap-top">
+          <dt>URL entrante</dt>
+          <dd class="mono">{{ c.webhookIncomingUrl || '— (no configurado)' }}</dd>
+          <dt>Secret</dt>
+          <dd>{{ c.webhookSecretConfigured ? '••• configurado' : '— (sin secret)' }}</dd>
+        </dl>
+        <div class="form-actions left">
+          @if (c.webhookIncomingUrl) {
+            <button class="ghost" (click)="testWebhook()" [disabled]="testing()">
+              {{ testing() ? 'Probando...' : 'Probar webhook' }}
+            </button>
+          }
+          <a class="ghost btn-link" [routerLink]="['/clients', c.id, 'edit']">Editar URL / secret</a>
+        </div>
+      </section>
+    }
+  }
 }

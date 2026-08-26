@@ -28,6 +28,25 @@ export interface RealtimeEvent {
   to?: string;
   body: string;
   timestamp: string;
+  // Identidad estable del contacto (teléfono; en grupos, el JID del grupo).
+  // Es la clave de agrupación del chat: casa IN y OUT aunque WhatsApp use @lid.
+  contactJid?: string;
+  messageId?: string | null;
+  senderName?: string | null;
+  isGroup?: boolean;
+  participant?: string | null;
+  hasMedia?: boolean;
+  msgType?: string;
+  source?: string;
+}
+
+export interface HandoffInfo {
+  clientId: number;
+  contactJid: string;
+  sessionId?: string | null;
+  motivo?: string | null;
+  resumen?: string | null;
+  assignedAt?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -38,6 +57,8 @@ export class SessionsService implements OnDestroy {
   // Tabla de sesiones VIVAS conocida vía socket + REST inicial.
   readonly sessions = signal<WaSession[]>([]);
   readonly events = signal<RealtimeEvent[]>([]);
+  // Contactos en modo humano, en vivo (seed por HTTP + eventos handoff:*).
+  readonly handoffs = signal<HandoffInfo[]>([]);
   readonly socketConnected = signal(false);
   readonly socketError = signal<string | null>(null);
 
@@ -105,6 +126,14 @@ export class SessionsService implements OnDestroy {
         from: p.message?.from,
         body: p.message?.body || '',
         timestamp: p.timestamp,
+        contactJid: p.message?.contactJid,
+        messageId: p.message?.id ?? null,
+        senderName: p.message?.senderName ?? null,
+        isGroup: Boolean(p.message?.isGroup),
+        participant: p.message?.participant ?? null,
+        hasMedia: Boolean(p.message?.hasMedia),
+        msgType: p.message?.type,
+        source: p.source,
       });
     });
 
@@ -116,13 +145,35 @@ export class SessionsService implements OnDestroy {
         to: p.message?.to,
         body: p.message?.body || '',
         timestamp: p.timestamp,
+        contactJid: p.message?.contactJid || p.message?.to,
+        messageId: p.message?.id ?? null,
+        source: p.source,
       });
+    });
+
+    this.socket.on('handoff:started', (p: any) => {
+      const list = this.handoffs().filter(
+        (h) => !(h.clientId === p.clientId && h.contactJid === p.contactJid),
+      );
+      this.handoffs.set([
+        { clientId: p.clientId, contactJid: p.contactJid, sessionId: p.sessionId,
+          motivo: p.motivo, resumen: p.resumen, assignedAt: p.timestamp },
+        ...list,
+      ]);
+    });
+
+    this.socket.on('handoff:resumed', (p: any) => {
+      this.handoffs.set(
+        this.handoffs().filter(
+          (h) => !(h.clientId === p.clientId && h.contactJid === p.contactJid),
+        ),
+      );
     });
   }
 
   private pushEvent(ev: RealtimeEvent) {
     const next = [ev, ...this.events()];
-    this.events.set(next.slice(0, 60));
+    this.events.set(next.slice(0, 500));
   }
 
   ngOnDestroy() {

@@ -1,9 +1,12 @@
 <header class="page-head">
   <div>
-    <h1>Audit log</h1>
-    <p class="muted">Trazabilidad de acciones del panel: logins, gestión de clientes y sesiones.</p>
+    <h1>Actividad</h1>
+    <p class="muted">Qué ha pasado en el panel: logins, clientes, sesiones, mensajes y handoffs.</p>
   </div>
   <div class="actions">
+    <button class="ghost" (click)="technical.set(!technical())">
+      {{ technical() ? 'Vista timeline' : 'Vista técnica' }}
+    </button>
     <button class="ghost" (click)="load()">Refrescar</button>
   </div>
 </header>
@@ -11,12 +14,17 @@
 <section class="card">
   <div class="filters-grid">
     <label>
-      Admin ID
-      <input [(ngModel)]="filters.adminIdText" placeholder="(cualquiera)" />
+      Acción
+      <select [(ngModel)]="filters.action">
+        <option value="">(todas)</option>
+        @for (a of actions; track a) {
+          <option [value]="a">{{ a }}</option>
+        }
+      </select>
     </label>
     <label>
-      Acción
-      <input [(ngModel)]="filters.action" placeholder="ej. admin_login" />
+      Buscar (cliente, sesión, número…)
+      <input [ngModel]="search()" (ngModelChange)="search.set($event)" placeholder="ej. 12, bot-main, 34600…" />
     </label>
     <label>
       Desde
@@ -37,15 +45,40 @@
   <p class="error-banner">{{ msg }}</p>
 }
 
-<section class="card">
-  @if (loading()) {
-    <p class="muted">Cargando...</p>
-  } @else if (!entries().length) {
+@if (loading()) {
+  <p class="muted">Cargando...</p>
+} @else if (!groups().length) {
+  <div class="card">
     <div class="empty">
-      <p>Sin entradas</p>
+      <p>Sin actividad</p>
       <span>Ajusta los filtros o realiza acciones en el panel.</span>
     </div>
-  } @else {
+  </div>
+} @else if (!technical()) {
+  <!-- ==================== TIMELINE ==================== -->
+  @for (g of groups(); track g.day) {
+    <section class="card timeline-day">
+      <h2 class="day-label">{{ g.day }}</h2>
+      <ol class="timeline">
+        @for (e of g.entries; track e.id) {
+          <li class="tl-item">
+            <span class="tl-dot {{ family(e.action) }}"></span>
+            <div class="tl-body">
+              <p class="tl-text">{{ describe(e) }}</p>
+              <p class="tl-meta dim small">
+                <span class="mono">{{ e.created_at | date: 'HH:mm' }}</span>
+                · admin #{{ e.admin_id || '—' }}
+                @if (e.ip_address) { · <span class="mono">{{ e.ip_address }}</span> }
+              </p>
+            </div>
+          </li>
+        }
+      </ol>
+    </section>
+  }
+} @else {
+  <!-- ==================== VISTA TÉCNICA (tabla original) ==================== -->
+  <section class="card">
     <table class="data">
       <thead>
         <tr>
@@ -58,20 +91,22 @@
         </tr>
       </thead>
       <tbody>
-        @for (e of entries(); track e.id) {
-          <tr>
-            <td class="mono small">{{ e.created_at | date: 'short' }}</td>
-            <td>{{ e.admin_id || '—' }}</td>
-            <td><span class="badge info">{{ e.action }}</span></td>
-            <td class="small">
-              @if (e.resource_type) { {{ e.resource_type }} } @else { — }
-              @if (e.resource_id) { <span class="mono dim">#{{ e.resource_id }}</span> }
-            </td>
-            <td class="mono small dim">{{ detailsPreview(e.details) }}</td>
-            <td class="mono small">{{ e.ip_address }}</td>
-          </tr>
+        @for (g of groups(); track g.day) {
+          @for (e of g.entries; track e.id) {
+            <tr>
+              <td class="mono small">{{ e.created_at | date: 'short' }}</td>
+              <td>{{ e.admin_id || '—' }}</td>
+              <td><span class="badge info">{{ e.action }}</span></td>
+              <td class="small">
+                @if (e.resource_type) { {{ e.resource_type }} } @else { — }
+                @if (e.resource_id) { <span class="mono dim">#{{ e.resource_id }}</span> }
+              </td>
+              <td class="mono small dim">{{ detailsPreview(e.details) }}</td>
+              <td class="mono small">{{ e.ip_address }}</td>
+            </tr>
+          }
         }
       </tbody>
     </table>
-  }
-</section>
+  </section>
+}

@@ -1,6 +1,8 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Client, ClientsService } from '../../core/api/clients.service';
+import { SessionsService } from '../../core/api/sessions.service';
+import { ChatService } from '../../core/api/chat.service';
 import { errorToMessage } from '../../core/api/error';
 
 @Component({
@@ -12,6 +14,9 @@ import { errorToMessage } from '../../core/api/error';
 })
 export class ClientsListComponent implements OnInit {
   private readonly api = inject(ClientsService);
+  // Semáforo operativo: sesiones vivas (socket) + handoffs + no leídos del chat.
+  readonly sessionsApi = inject(SessionsService);
+  readonly chat = inject(ChatService);
 
   readonly clients = signal<Client[]>([]);
   readonly loading = signal(false);
@@ -20,6 +25,7 @@ export class ClientsListComponent implements OnInit {
 
   ngOnInit() {
     this.load();
+    this.chat.hydrate(); // seed de handoffs + contexto de chat
   }
 
   load() {
@@ -34,5 +40,33 @@ export class ClientsListComponent implements OnInit {
   toggleActiveOnly() {
     this.activeOnly.set(!this.activeOnly());
     this.load();
+  }
+
+  sessionOf(clientId: number) {
+    const all = this.sessionsApi.sessions().filter((s) => s.clientId === clientId);
+    return all.find((s) => s.status === 'ready') || all[0] || null;
+  }
+
+  sessionDot(clientId: number): string {
+    const s = this.sessionOf(clientId);
+    if (!s) return 'mute';
+    if (s.status === 'ready') return 'ok';
+    if (s.status === 'stopped' || s.status === 'auth_failure' || s.status === 'error') return 'err';
+    return 'warn';
+  }
+
+  sessionLabel(clientId: number): string {
+    const s = this.sessionOf(clientId);
+    if (!s) return 'Sin sesión';
+    if (s.status === 'ready') return s.connectedNumber ? `+${s.connectedNumber}` : 'Conectado';
+    return s.status;
+  }
+
+  handoffCount(clientId: number): number {
+    return this.sessionsApi.handoffs().filter((h) => h.clientId === clientId).length;
+  }
+
+  unread(clientId: number): number {
+    return this.chat.unreadByClient().get(clientId) || 0;
   }
 }

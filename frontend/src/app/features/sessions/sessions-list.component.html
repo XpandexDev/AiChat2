@@ -85,45 +85,27 @@
 </section>
 
 <section class="card">
-  <h2>Enviar mensaje (manual)</h2>
-  <div class="form-grid" style="margin-top:14px">
-    <label>
-      Session ID
-      <input [(ngModel)]="sendSessionId" placeholder="bot-main" />
-    </label>
-    <label>
-      Destino
-      <input [(ngModel)]="sendTo" placeholder="34600111222" />
-    </label>
-    <label class="full">
-      Mensaje
-      <textarea rows="3" [(ngModel)]="sendText"></textarea>
-    </label>
-  </div>
-  <div class="form-actions">
-    <button class="primary" (click)="sendMessage()">Enviar</button>
-  </div>
-</section>
-
-<section class="card">
-  <h2>Eventos en tiempo real</h2>
-  <p class="muted" style="margin-top:4px;font-size:.88rem">Últimos 60 mensajes IN/OUT vía Socket.IO.</p>
-  @if (!events().length) {
-    <div class="empty" style="margin-top:14px">
-      <p>Sin eventos aún</p>
-      <span>Aparecerán cuando se envíe o reciba un mensaje.</span>
+  <details class="advanced-send">
+    <summary>
+      <h2>Envío avanzado (por session ID)</h2>
+      <span class="dim small">Para conversar con contexto usa <a routerLink="/chat">Conversaciones</a>.</span>
+    </summary>
+    <div class="form-grid gap-top">
+      <label>
+        Session ID
+        <input [(ngModel)]="sendSessionId" placeholder="bot-main" />
+      </label>
+      <label>
+        Destino
+        <input [(ngModel)]="sendTo" placeholder="34600111222" />
+      </label>
+      <label class="full">
+        Mensaje
+        <textarea rows="3" [(ngModel)]="sendText"></textarea>
+      </label>
     </div>
-  } @else {
-    <div class="events">
-      @for (ev of events(); track $index) {
-        <div class="event {{ ev.direction }}">
-          <span class="dir">{{ ev.direction === 'incoming' ? 'IN' : 'OUT' }}</span>
-          <span class="ev-session mono">{{ ev.sessionId }}</span>
-          <span class="ev-peer">{{ ev.from || ev.to }}</span>
-          <span class="ev-body">{{ ev.body }}</span>
-          <span class="ev-time">{{ ev.timestamp | date: 'HH:mm:ss' }}</span>
-        </div>
-      }
+    <div class="form-actions">
+      <button class="primary" (click)="sendMessage()">Enviar</button>
     </div>
-  }
+  </details>
 </section>

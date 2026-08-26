@@ -30,10 +30,11 @@
         <tr>
           <th>#</th>
           <th>Nombre</th>
-          <th>Email / Teléfono</th>
+          <th>WhatsApp</th>
+          <th>Bot</th>
+          <th>Atención</th>
           <th>Estado</th>
           <th>Webhook</th>
-          <th>Tags</th>
           <th></th>
         </tr>
       </thead>
@@ -50,9 +51,26 @@
               </a>
             </td>
             <td>
-              @if (c.email) { <div class="mono dim small">{{ c.email }}</div> }
-              @if (c.phone) { <div class="mono dim small">{{ c.phone }}</div> }
-              @if (!c.email && !c.phone) { <span class="dim">—</span> }
+              <span class="wa-cell">
+                <span class="dot {{ sessionDot(c.id) }}"></span>
+                <span class="mono small dim">{{ sessionLabel(c.id) }}</span>
+              </span>
+            </td>
+            <td>
+              @if (c.botEnabled) {
+                <span class="badge ok">ON</span>
+              } @else {
+                <span class="badge mute">OFF</span>
+              }
+            </td>
+            <td>
+              @if (handoffCount(c.id) > 0) {
+                <span class="badge warn">{{ handoffCount(c.id) }} humano</span>
+              }
+              @if (unread(c.id) > 0) {
+                <a [routerLink]="['/chat']" class="badge info" style="text-decoration:none">{{ unread(c.id) }} sin leer</a>
+              }
+              @if (handoffCount(c.id) === 0 && unread(c.id) === 0) { <span class="dim">—</span> }
             </td>
             <td>
               @if (c.isActive) {
@@ -67,12 +85,6 @@
               } @else {
                 <span class="dim">—</span>
               }
-            </td>
-            <td>
-              @for (t of c.tags; track t) {
-                <span class="tag">{{ t }}</span>
-              }
-              @if (!c.tags.length) { <span class="dim">—</span> }
             </td>
             <td class="right">
               <a class="ghost btn-link" [routerLink]="['/clients', c.id]">Abrir</a>

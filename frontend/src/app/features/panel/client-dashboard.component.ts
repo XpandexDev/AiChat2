@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import {
@@ -26,7 +26,9 @@ const DAY_LABELS: Record<number, string> = {
   templateUrl: './client-dashboard.component.html',
   styleUrl: './client-dashboard.component.scss',
 })
-export class ClientDashboardComponent implements OnInit {
+export class ClientDashboardComponent implements OnInit, OnDestroy {
+  // Refresco suave del handoff (el panel de cliente no tiene socket).
+  private handoffPoll: ReturnType<typeof setInterval> | null = null;
   private readonly api = inject(ClientPanelService);
 
   readonly timezones = [
@@ -62,6 +64,11 @@ export class ClientDashboardComponent implements OnInit {
 
   ngOnInit() {
     this.load();
+    this.handoffPoll = setInterval(() => this.loadHandoff(), 30000);
+  }
+
+  ngOnDestroy() {
+    if (this.handoffPoll) clearInterval(this.handoffPoll);
   }
 
   load() {

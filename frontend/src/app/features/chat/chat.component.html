@@ -1,0 +1,89 @@
+<div class="page-head">
+  <div>
+    <h1>Conversaciones</h1>
+    <p class="muted">En vivo — contexto reciente en memoria, sin histórico persistente.</p>
+  </div>
+</div>
+
+@if (error(); as msg) {
+  <p class="error-banner">{{ msg }}</p>
+}
+
+<div class="chat-shell card">
+  <!-- Columna 1: clientes -->
+  <aside class="col col-clients">
+    <div class="col-title section-label">Clientes</div>
+    <div class="col-scroll">
+      @for (row of clientRows(); track row.client.id) {
+        <button
+          type="button"
+          class="row-item"
+          [class.selected]="selectedClientId() === row.client.id"
+          (click)="selectClient(row.client.id)"
+        >
+          <span class="dot {{ statusDot(row.sessionStatus) }}"></span>
+          <span class="row-main">
+            <strong>{{ row.client.name }}</strong>
+            @if (row.handoffCount > 0) {
+              <span class="badge warn">{{ row.handoffCount }} humano</span>
+            }
+          </span>
+          @if (row.unread > 0) {
+            <span class="unread">{{ row.unread }}</span>
+          }
+        </button>
+      } @empty {
+        <p class="dim small pad">Sin clientes.</p>
+      }
+    </div>
+  </aside>
+
+  <!-- Columna 2: conversaciones del cliente -->
+  <aside class="col col-convs">
+    <div class="col-title section-label">{{ clientName(selectedClientId()) || 'Contactos' }}</div>
+    <div class="col-scroll">
+      @for (conv of clientConvs(); track conv.contactJid) {
+        <button
+          type="button"
+          class="row-item conv"
+          [class.selected]="selectedContact() === conv.contactJid"
+          (click)="selectContact(conv.contactJid)"
+        >
+          <span class="row-main">
+            <span class="conv-top">
+              <strong>{{ contactLabel(conv) }}</strong>
+              @if (conv.isGroup) { <span class="pill">Grupo</span> }
+              @if (chat.isHandoff(conv.clientId, conv.contactJid)) {
+                <span class="badge warn">Humano</span>
+              }
+            </span>
+            <span class="conv-preview dim">{{ conv.lastBody }}</span>
+          </span>
+          <span class="conv-side">
+            <span class="dim small">{{ conv.lastAt | date: 'HH:mm' }}</span>
+            @if (conv.unread > 0) {
+              <span class="unread">{{ conv.unread }}</span>
+            }
+          </span>
+        </button>
+      } @empty {
+        <p class="dim small pad">Sin conversaciones recientes para este cliente. Aparecerán al llegar mensajes.</p>
+      }
+    </div>
+  </aside>
+
+  <!-- Columna 3: hilo -->
+  <section class="col col-thread">
+    <app-chat-thread
+      [conv]="selectedConv()"
+      [contactLabel]="selectedConv() ? contactLabel(selectedConv()!) : ''"
+      [contactPhone]="selectedConv() ? contactPhone(selectedConv()!.contactJid) : ''"
+      [handoff]="selectedHandoff()"
+      [canSend]="!!readySession()"
+      [sendHint]="'El cliente no tiene una sesión de WhatsApp lista (estado ready) para responder.'"
+      [sending]="sending()"
+      (send)="send($event)"
+      (resume)="resume()"
+    />
+  </section>
+</div>

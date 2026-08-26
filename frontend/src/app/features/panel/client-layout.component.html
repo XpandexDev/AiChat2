@@ -13,6 +13,12 @@
   </div>
 </header>
 
+<nav class="panel-subnav" [class.scrolled]="scrolled()">
+  @for (s of sections; track s.id) {
+    <button type="button" (click)="scrollTo(s.id)">{{ s.label }}</button>
+  }
+</nav>
+
 <main class="panel-main">
   <router-outlet />
 </main>

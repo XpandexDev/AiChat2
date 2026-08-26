@@ -39,6 +39,10 @@ export const routes: Routes = [
         loadChildren: () => import('./features/clients/clients.routes').then((m) => m.CLIENTS_ROUTES),
       },
       {
+        path: 'chat',
+        loadComponent: () => import('./features/chat/chat.component').then((m) => m.ChatComponent),
+      },
+      {
         path: 'sessions',
         loadChildren: () => import('./features/sessions/sessions.routes').then((m) => m.SESSIONS_ROUTES),
       },

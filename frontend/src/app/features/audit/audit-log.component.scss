@@ -9,3 +9,61 @@
 @media (max-width: 880px) {
   .filters-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* Timeline legible */
+.timeline-day + .timeline-day { margin-top: 16px; }
+.day-label {
+  font-size: 0.82rem;
+  text-transform: capitalize;
+  color: var(--text-dim);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.timeline {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+}
+
+.tl-item {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  padding: 8px 0 8px 4px;
+
+  /* línea vertical conectora */
+  &:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 9px;
+    top: 24px;
+    bottom: -8px;
+    width: 2px;
+    background: var(--border);
+  }
+}
+
+.tl-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: none;
+  margin-top: 5px;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--border);
+
+  &.auth { background: var(--info); }
+  &.client { background: var(--text-2); }
+  &.session { background: var(--ok); }
+  &.handoff { background: var(--warn); }
+  &.message { background: var(--accent); }
+  &.rule { background: var(--mute); }
+  &.webhook { background: var(--accent-ink); }
+  &.other { background: var(--mute); }
+}
+
+.tl-body { min-width: 0; }
+.tl-text { margin: 0; font-size: 0.9rem; }
+.tl-meta { margin: 2px 0 0; }

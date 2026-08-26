@@ -1,0 +1,107 @@
+:host { display: block; }
+
+.chat-shell {
+  display: grid;
+  grid-template-columns: 240px 300px 1fr;
+  height: calc(100vh - 190px);
+  min-height: 420px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.col-clients,
+.col-convs { border-right: 1px solid var(--border); }
+
+.col-title {
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.col-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.pad { padding: 12px 14px; }
+
+.row-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 11px 14px;
+  font-weight: 400;
+
+  &:hover { background: rgba(15, 17, 21, 0.03); }
+  &.selected { background: rgba(15, 17, 21, 0.05); }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    &.ok { background: var(--ok); }
+    &.warn { background: var(--warn); }
+    &.mute { background: rgba(15, 17, 21, 0.2); }
+  }
+
+  .row-main {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+    strong { font-size: 0.88rem; font-weight: 600; }
+  }
+}
+
+.conv-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.conv-preview {
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conv-side {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+  flex: none;
+}
+
+.unread {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: inline-grid;
+  place-items: center;
+}
+
+@media (max-width: 1000px) {
+  .chat-shell { grid-template-columns: 200px 1fr; }
+  .col-thread { grid-column: 1 / -1; border-top: 1px solid var(--border); }
+  .chat-shell { height: auto; }
+  .col-clients, .col-convs { max-height: 260px; }
+  .col-thread { height: 60vh; }
+}

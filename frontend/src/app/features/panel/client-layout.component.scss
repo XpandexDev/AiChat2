@@ -77,12 +77,45 @@
   }
 }
 
+/* Sub-navegación fija por secciones (bajo la pill) */
+.panel-subnav {
+  position: fixed;
+  top: 64px;
+  left: 0;
+  right: 0;
+  z-index: 49;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 16px;
+  flex-wrap: wrap;
+  transition: top 0.45s var(--ease-out);
+
+  &.scrolled { top: 56px; }
+
+  button {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 5px 13px;
+    font-size: 0.76rem;
+    font-weight: 500;
+    color: var(--text-2);
+
+    &:hover { color: var(--text); background: #fff; }
+  }
+}
+
 .panel-main {
   max-width: 860px;
   margin: 0 auto;
-  padding: 92px 24px 48px;
+  padding: 128px 24px 48px;
   display: grid;
   gap: 18px;
+
+  /* Que las anclas no queden bajo la cabecera fija */
+  section[id] { scroll-margin-top: 120px; }
 }
 
 @media (max-width: 560px) {

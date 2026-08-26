@@ -1,5 +1,23 @@
 /* clients-specific styles. Layout/table/form helpers viven en src/styles.scss */
 
+/* Semáforo de sesión WhatsApp en la lista */
+.wa-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    &.ok { background: var(--ok); }
+    &.warn { background: var(--warn); }
+    &.err { background: var(--err); }
+    &.mute { background: rgba(15, 17, 21, 0.2); }
+  }
+}
+
 /* --- Detail --- */
 
 .detail-head {
@@ -11,6 +29,7 @@
   margin-bottom: 20px;
 }
 .detail-head h1 { font-size: 1.6rem; }
+.detail-title { margin-top: 6px; }
 .detail-head .meta {
   display: flex;
   gap: 8px;
@@ -77,6 +96,82 @@
     background: var(--surface-2);
     cursor: text;
   }
+}
+
+/* Formularios en línea (antes eran grid-template-columns inline) */
+.form-inline-2 { grid-template-columns: 1fr auto; align-items: end; }
+.form-inline-3 { grid-template-columns: 1fr 1.2fr auto; align-items: end; }
+@media (max-width: 720px) {
+  .form-inline-2, .form-inline-3 { grid-template-columns: 1fr; }
+}
+
+/* Pestaña Conversaciones: lista + hilo */
+.conv-card {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  padding: 0;
+  overflow: hidden;
+  height: calc(100vh - 320px);
+  min-height: 380px;
+}
+.conv-list {
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  min-height: 0;
+}
+.conv-thread {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.conv-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 11px 14px;
+  font-weight: 400;
+
+  &:hover { background: rgba(15, 17, 21, 0.03); }
+  &.selected { background: rgba(15, 17, 21, 0.05); }
+}
+.conv-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  strong { font-size: 0.88rem; }
+}
+.conv-prev {
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conv-side { display: grid; gap: 4px; justify-items: end; flex: none; }
+.unread-mini {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: inline-grid;
+  place-items: center;
+}
+.pad { padding: 12px 14px; }
+@media (max-width: 860px) {
+  .conv-card { grid-template-columns: 1fr; height: auto; }
+  .conv-list { max-height: 240px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .conv-thread { height: 55vh; }
 }
 
 .qr-frame {
