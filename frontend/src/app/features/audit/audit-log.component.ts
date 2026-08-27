@@ -11,6 +11,7 @@ const ACTIONS = [
   'client.pairing_regenerate', 'client.set_password',
   'client.blacklist_add', 'client.blacklist_remove',
   'session.start', 'session.stop', 'session.delete',
+  'group.create', 'group.join',
   'handoff.resume', 'message.send', 'webhook.test',
 ] as const;
 
@@ -112,6 +113,8 @@ export class AuditLogComponent implements OnInit {
       case 'session.start': return `Inició la sesión de WhatsApp "${e.resource_id}"${d.clientId ? ` (cliente #${d.clientId})` : ''}`;
       case 'session.stop': return `Paró la sesión de WhatsApp "${e.resource_id}"`;
       case 'session.delete': return `Eliminó la sesión de WhatsApp "${e.resource_id}"`;
+      case 'group.create': return `Creó el grupo "${d.subject || ''}"${d.participants ? ` (${d.participants} participantes)` : ''} desde "${e.resource_id}"`;
+      case 'group.join': return `Unió el bot a un grupo por invitación desde "${e.resource_id}"`;
       case 'handoff.resume': return `Devolvió al bot el contacto ${this.phone(d.contactJid)} (cliente ${res})`;
       case 'message.send': return `Envió un mensaje manual a ${this.phone(d.to)}${d.length ? ` (${d.length} caracteres)` : ''}`;
       case 'webhook.test': return `Probó el webhook del cliente ${res}${d.status ? ` (HTTP ${d.status})` : ''}`;
@@ -131,6 +134,7 @@ export class AuditLogComponent implements OnInit {
     if (action.startsWith('client.blacklist')) return 'rule';
     if (action.startsWith('client.')) return 'client';
     if (action.startsWith('session.')) return 'session';
+    if (action.startsWith('group.')) return 'session';
     if (action.startsWith('handoff.')) return 'handoff';
     if (action.startsWith('message.')) return 'message';
     if (action.startsWith('webhook.')) return 'webhook';

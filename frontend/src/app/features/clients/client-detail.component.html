@@ -229,6 +229,34 @@
         </section>
 
         <section class="card">
+          <h2>Grupos</h2>
+          <p class="muted gap-top-sm small">
+            El bot puede entrar en grupos: responde solo cuando le mencionan o le citan.
+          </p>
+          <div class="form-grid form-inline-3 gap-top">
+            <label>
+              Nombre del grupo
+              <input [(ngModel)]="newGroupSubject" placeholder="Soporte · Cliente X" />
+            </label>
+            <label>
+              Teléfonos (separados por comas)
+              <input [(ngModel)]="newGroupParticipants" placeholder="34600111222, 34600333444" />
+            </label>
+            <button class="primary" (click)="createGroup()" [disabled]="groupBusy()">Crear</button>
+          </div>
+          <div class="form-grid form-inline-2 gap-top">
+            <label>
+              Unirse por enlace de invitación
+              <input [(ngModel)]="groupInvite" placeholder="https://chat.whatsapp.com/…" />
+            </label>
+            <button class="ghost" (click)="joinGroup()" [disabled]="groupBusy()">Unirse</button>
+          </div>
+          @if (!readySession()) {
+            <p class="muted small gap-top-sm">Necesita una sesión conectada (estado Conectado).</p>
+          }
+        </section>
+
+        <section class="card">
           <h2>Números sin bot (blacklist)</h2>
           <p class="muted gap-top-sm small">El bot ignora por completo a estos números (no responde nada).</p>
           <div class="form-grid form-inline-3 gap-top">

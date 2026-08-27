@@ -108,6 +108,36 @@ router.post('/start', async (req, res) => {
   }
 });
 
+// --- Grupos: crear y unirse por invitación (vía la sesión del cliente) ---
+router.post('/:sessionId/groups', async (req, res) => {
+  const subject = String(req.body?.subject || '').trim();
+  const participants = Array.isArray(req.body?.participants) ? req.body.participants : [];
+  try {
+    const result = await manager.createGroup(req.params.sessionId, subject, participants);
+    auditLog(req.adminId, 'group.create', 'wa_session', req.params.sessionId,
+      { subject, participants: participants.length, groupId: result.id }, req).catch(() => {});
+    return res.status(201).json(result);
+  } catch (err) {
+    if (err.code === 'VALIDATION') return res.status(400).json({ error: err.message });
+    if (err.code === 'SESSION_NOT_READY') return res.status(409).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:sessionId/groups/join', async (req, res) => {
+  const invite = String(req.body?.invite || '').trim();
+  try {
+    const result = await manager.joinGroupByInvite(req.params.sessionId, invite);
+    auditLog(req.adminId, 'group.join', 'wa_session', req.params.sessionId,
+      { groupId: result.id }, req).catch(() => {});
+    return res.json(result);
+  } catch (err) {
+    if (err.code === 'VALIDATION') return res.status(400).json({ error: err.message });
+    if (err.code === 'SESSION_NOT_READY') return res.status(409).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/:sessionId/stop', async (req, res) => {
   const ok = await manager.stopSession(req.params.sessionId);
   if (!ok) return res.status(404).json({ error: 'Sesión no encontrada' });

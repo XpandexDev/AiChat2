@@ -138,6 +138,51 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
   newSessionId = '';
   newSessionMode: 'normal' | 'business' = 'normal';
 
+  // --- Grupos (crear / unirse por invitación) ---
+  newGroupSubject = '';
+  newGroupParticipants = '';
+  groupInvite = '';
+  readonly groupBusy = signal(false);
+
+  createGroup() {
+    const session = this.readySession();
+    const subject = this.newGroupSubject.trim();
+    const participants = this.newGroupParticipants.split(',').map((p) => p.trim()).filter(Boolean);
+    if (!session) { this.error.set('Necesita una sesión de WhatsApp conectada'); return; }
+    if (!subject || !participants.length) {
+      this.error.set('Nombre del grupo y al menos un teléfono son requeridos');
+      return;
+    }
+    this.groupBusy.set(true);
+    this.error.set(null);
+    this.sessionsApi.createGroup(session.sessionId, subject, participants).subscribe({
+      next: (r) => {
+        this.groupBusy.set(false);
+        this.newGroupSubject = '';
+        this.newGroupParticipants = '';
+        this.notice.set(`Grupo "${r.subject}" creado (${participants.length} participantes)`);
+      },
+      error: (err) => { this.groupBusy.set(false); this.error.set(errorToMessage(err, 'No se pudo crear el grupo')); },
+    });
+  }
+
+  joinGroup() {
+    const session = this.readySession();
+    const invite = this.groupInvite.trim();
+    if (!session) { this.error.set('Necesita una sesión de WhatsApp conectada'); return; }
+    if (!invite) { this.error.set('Pega el enlace de invitación del grupo'); return; }
+    this.groupBusy.set(true);
+    this.error.set(null);
+    this.sessionsApi.joinGroup(session.sessionId, invite).subscribe({
+      next: () => {
+        this.groupBusy.set(false);
+        this.groupInvite = '';
+        this.notice.set('El bot se ha unido al grupo');
+      },
+      error: (err) => { this.groupBusy.set(false); this.error.set(errorToMessage(err, 'No se pudo unir al grupo')); },
+    });
+  }
+
   // --- Conversaciones del cliente (pestaña chat, reusa el store global) ---
   readonly selectedContact = signal<string | null>(null);
   readonly sending = signal(false);

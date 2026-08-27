@@ -34,6 +34,7 @@ export interface RealtimeEvent {
   messageId?: string | null;
   senderName?: string | null;
   isGroup?: boolean;
+  groupSubject?: string | null;
   participant?: string | null;
   hasMedia?: boolean;
   msgType?: string;
@@ -130,6 +131,7 @@ export class SessionsService implements OnDestroy {
         messageId: p.message?.id ?? null,
         senderName: p.message?.senderName ?? null,
         isGroup: Boolean(p.message?.isGroup),
+        groupSubject: p.message?.groupSubject ?? null,
         participant: p.message?.participant ?? null,
         hasMedia: Boolean(p.message?.hasMedia),
         msgType: p.message?.type,
@@ -206,6 +208,18 @@ export class SessionsService implements OnDestroy {
 
   sendMessage(sessionId: string, to: string, text: string): Observable<unknown> {
     return this.http.post('/api/messages/send', { sessionId, to, text });
+  }
+
+  createGroup(sessionId: string, subject: string, participants: string[]): Observable<{ id: string; subject: string }> {
+    return this.http.post<{ id: string; subject: string }>(
+      `${this.base}/${encodeURIComponent(sessionId)}/groups`, { subject, participants },
+    );
+  }
+
+  joinGroup(sessionId: string, invite: string): Observable<{ id: string | null }> {
+    return this.http.post<{ id: string | null }>(
+      `${this.base}/${encodeURIComponent(sessionId)}/groups/join`, { invite },
+    );
   }
 }
 

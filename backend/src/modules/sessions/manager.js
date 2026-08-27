@@ -120,6 +120,85 @@ function getRecentConversations(clientId = null) {
   return result;
 }
 
+// --- Grupos: nombre (subject) cacheado para el panel y el payload ---
+const groupSubjectCache = new Map();   // `${clientId}|${groupJid}` -> subject
+const groupSubjectPending = new Set();
+
+function getGroupSubject(clientId, groupJid) {
+  return groupSubjectCache.get(`${clientId}|${groupJid}`) || null;
+}
+
+// Fire-and-forget: no bloquea el flujo del mensaje. Cuando llega el subject,
+// actualiza también el título del hilo ya existente en el buffer.
+function ensureGroupSubject(session, groupJid) {
+  const key = `${session.clientId}|${groupJid}`;
+  if (groupSubjectCache.has(key) || groupSubjectPending.has(key) || !session.sock) return;
+  groupSubjectPending.add(key);
+  withTimeout(session.sock.groupMetadata(groupJid).catch(() => null), 8000)
+    .then((meta) => {
+      groupSubjectPending.delete(key);
+      const subject = meta?.subject || null;
+      if (!subject) return;
+      groupSubjectCache.set(key, subject);
+      const conv = chatBuffer.get(session.clientId)?.get(groupJid);
+      if (conv) conv.senderName = subject;
+    })
+    .catch(() => groupSubjectPending.delete(key));
+}
+
+// --- Menciones salientes: '@34612345678' en el texto → mención real de WhatsApp ---
+// n8n (o el composer del panel) solo tiene que escribir @<número> en el texto.
+function mentionsFromText(text) {
+  const matches = String(text || '').match(/@\d{6,15}/g) || [];
+  return [...new Set(matches.map((m) => `${m.slice(1)}@s.whatsapp.net`))];
+}
+
+function withMentions(text) {
+  const mentions = mentionsFromText(text);
+  return mentions.length ? { text, mentions } : { text };
+}
+
+// --- Gestión de grupos: crear y unirse por enlace de invitación ---
+function requireReadySession(sessionId) {
+  const session = sessions.get(sessionId);
+  if (!session || !session.sock || session.status !== 'ready') {
+    const e = new Error(`La sesión ${sessionId} no está lista`);
+    e.code = 'SESSION_NOT_READY';
+    throw e;
+  }
+  return session;
+}
+
+async function createGroup(sessionId, subject, participants) {
+  const session = requireReadySession(sessionId);
+  const jids = (participants || []).map((p) => normalizeJid(p)).filter(Boolean);
+  if (!subject || !jids.length) {
+    const e = new Error('subject y al menos un participante son requeridos');
+    e.code = 'VALIDATION';
+    throw e;
+  }
+  const meta = await session.sock.groupCreate(String(subject), jids);
+  groupSubjectCache.set(`${session.clientId}|${meta.id}`, meta.subject || String(subject));
+  return { id: meta.id, subject: meta.subject || String(subject), participants: jids.length };
+}
+
+async function joinGroupByInvite(sessionId, invite) {
+  const session = requireReadySession(sessionId);
+  // Acepta el enlace completo (https://chat.whatsapp.com/XXXX) o solo el código
+  const code = String(invite || '')
+    .trim()
+    .replace(/^https?:\/\/chat\.whatsapp\.com\//i, '')
+    .replace(/[/?#].*$/, '');
+  if (!code) {
+    const e = new Error('Enlace o código de invitación requerido');
+    e.code = 'VALIDATION';
+    throw e;
+  }
+  const groupId = await session.sock.groupAcceptInvite(code);
+  if (groupId) ensureGroupSubject(session, normalizeJid(groupId));
+  return { id: groupId || null };
+}
+
 // --- Grupos: el bot responde solo si le HABLAN (mención, cita o palabra clave) ---
 // El resto de mensajes de grupo se ven en el panel pero NO se reenvían a n8n
 // (un bot que salta a cada mensaje quema al grupo). GROUP_REPLY_ALL=true en el
@@ -757,12 +836,14 @@ async function connectSocket(session) {
       // también — sin coste de latencia: NUNCA se consulta en caliente aquí.
       const phoneOf = (j) => (String(j || '').endsWith('@s.whatsapp.net') ? j.split('@')[0] : null);
       const cachedProfile = contactProfileCache.get(`${session.clientId}|${contactJid}`)?.value || null;
+      if (isGroup) ensureGroupSubject(session, chatJid); // async, no bloquea
       const contact = {
         jid: contactJid,
         phone: phoneOf(contactJid),
         name: msg.pushName || null,
         isGroup,
         groupJid: isGroup ? remoteJid : null,
+        groupSubject: isGroup ? getGroupSubject(session.clientId, chatJid) : null,
         participantPhone: isGroup ? phoneOf(normalizeJid(msg.key.participantPn || msg.key.participant)) : null,
         about: cachedProfile?.about || null,
         business: cachedProfile?.business || null,
@@ -785,6 +866,7 @@ async function connectSocket(session) {
           hasMedia: hasMedia(msg.message),
           isGroup,
           groupJid: isGroup ? remoteJid : null,
+          groupSubject: contact.groupSubject,
           participant: isGroup ? normalizeJid(msg.key.participantPn || msg.key.participant) : null,
           senderName: msg.pushName || null,
         },
@@ -798,7 +880,7 @@ async function connectSocket(session) {
         participant: payload.message.participant,
         hasMedia: payload.message.hasMedia,
         timestamp: payload.timestamp,
-      }, { senderName: isGroup ? null : payload.message.senderName, isGroup });
+      }, { senderName: isGroup ? contact.groupSubject : payload.message.senderName, isGroup });
 
       if (io) io.emit('message:incoming', payload);
 
@@ -885,7 +967,7 @@ async function connectSocket(session) {
 
             for (let i = 0; i < chunks.length; i++) {
               try {
-                const sent = await session.sock.sendMessage(jid, { text: chunks[i] });
+                const sent = await session.sock.sendMessage(jid, withMentions(chunks[i]));
                 emitOutgoing(session, 'webhook-response', {
                   id: sent?.key?.id || null, to: jid, body: chunks[i],
                 });
@@ -1139,7 +1221,7 @@ async function sendMessage(sessionId, to, text) {
     throw new Error('Destino inválido. Usa número internacional, por ejemplo: 34600111222');
   }
 
-  const sent = await session.sock.sendMessage(jid, { text: String(text) });
+  const sent = await session.sock.sendMessage(jid, withMentions(String(text)));
 
   return emitOutgoing(session, 'chatbot', {
     id: sent?.key?.id || null,
@@ -1295,4 +1377,6 @@ module.exports = {
   invalidateBotState,
   getRecentConversations,
   getContactProfile,
+  createGroup,
+  joinGroupByInvite,
 };
