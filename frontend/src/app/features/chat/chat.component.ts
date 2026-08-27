@@ -151,7 +151,8 @@ export class ChatComponent implements OnInit {
   }
 
   contactPhone(jid: string): string {
-    const num = String(jid || '').split('@')[0];
+    const [num, host] = String(jid || '').split('@');
+    if (host === 'lid') return num; // LID interno de WhatsApp, no es un teléfono
     return /^\d{6,}$/.test(num) ? `+${num}` : num;
   }
 

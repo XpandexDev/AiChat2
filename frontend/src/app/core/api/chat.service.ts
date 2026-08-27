@@ -115,7 +115,8 @@ export class ChatService {
         hasMedia: ev.hasMedia,
         source: ev.source,
       });
-      if (ev.direction === 'incoming' && ev.senderName) conv.senderName = ev.senderName;
+      // En grupos el nombre por mensaje es de quien habló, no el título del hilo.
+      if (ev.direction === 'incoming' && ev.senderName && !ev.isGroup) conv.senderName = ev.senderName;
       if (ev.isGroup) conv.isGroup = true;
     }
 

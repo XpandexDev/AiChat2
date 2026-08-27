@@ -14,7 +14,9 @@
           @if (profile?.business) { <span class="pill biz">Empresa</span> }
         </span>
         <span class="who-sub">
-          <span class="mono dim">{{ contactPhone }}</span>
+          @if (contactPhone && contactPhone !== contactLabel) {
+            <span class="mono dim">{{ contactPhone }}</span>
+          }
           @if (profile?.about) {
             <span class="dim about" title="Info del contacto">· “{{ profile?.about }}”</span>
           }

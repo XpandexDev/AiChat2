@@ -58,6 +58,26 @@ const CHAT_MSGS_PER_CONV = 50;    // últimos N mensajes por conversación
 const CHAT_CONVS_PER_CLIENT = 100; // conversaciones por cliente (evicción LRU)
 const chatBuffer = new Map();
 
+// Mapa @lid -> teléfono (RAM). WhatsApp puede direccionar un 1:1 por @lid;
+// n8n responde a ese @lid y, sin este mapa, el hilo saliente no casaría con
+// el entrante (que agrupamos por teléfono) → chats partidos en dos.
+const lidToPhone = new Map();
+
+function rememberLid(lidJid, phoneJid) {
+  if (!lidJid || !phoneJid || lidJid === phoneJid) return;
+  lidToPhone.set(lidJid, phoneJid);
+  if (lidToPhone.size > 2000) {
+    lidToPhone.delete(lidToPhone.keys().next().value);
+  }
+}
+
+// Identidad de HILO para un JID de destino: resuelve @lid a teléfono si lo conocemos.
+function chatIdentity(jid) {
+  const norm = normalizeJid(jid);
+  if (!norm) return null;
+  return lidToPhone.get(norm) || norm;
+}
+
 function recordChatMessage(clientId, contactJid, entry, meta = {}) {
   if (!clientId || !contactJid) return;
   let convs = chatBuffer.get(clientId);
@@ -184,7 +204,9 @@ async function getContactProfile(clientId, rawJid) {
 // Emisión + registro unificado de mensajes SALIENTES (antes había 4 copias del
 // mismo objeto con distinto source: auto-reply/webhook-response/form-link/chatbot).
 function emitOutgoing(session, source, message) {
-  const contactJid = normalizeJid(message.to);
+  // Identidad del hilo: si el destino es un @lid conocido, agrupamos por el
+  // teléfono real (misma conversación que los mensajes entrantes).
+  const contactJid = chatIdentity(message.to);
   const payload = {
     type: 'outgoing_message',
     source,
@@ -563,6 +585,16 @@ async function connectSocket(session) {
       const replyJid = remoteJid;
       const contactJid = normalizeJid(msg.key.senderPn || remoteJid);
 
+      // Si este 1:1 llega direccionado por @lid, aprendemos el mapeo al teléfono
+      // real para que las RESPUESTAS (que van al @lid) caigan en el mismo hilo.
+      if (!isGroup && String(remoteJid || '').endsWith('@lid') && msg.key.senderPn) {
+        rememberLid(normalizeJid(remoteJid), contactJid);
+      }
+
+      // Identidad del HILO en el chat del panel: en grupos, el grupo entero;
+      // en 1:1, el teléfono del contacto.
+      const chatJid = isGroup ? normalizeJid(remoteJid) : contactJid;
+
       const payload = {
         type: 'incoming_message',
         source: 'whatsapp-web',
@@ -573,7 +605,7 @@ async function connectSocket(session) {
         message: {
           id: msg.key.id || null,
           from: remoteJid,
-          contactJid,
+          contactJid: chatJid,
           body: extractText(msg.message),
           type: messageType(msg.message),
           hasMedia: hasMedia(msg.message),
@@ -584,7 +616,7 @@ async function connectSocket(session) {
         },
       };
 
-      recordChatMessage(session.clientId, contactJid, {
+      recordChatMessage(session.clientId, chatJid, {
         direction: 'in',
         id: payload.message.id,
         body: payload.message.body,
@@ -592,7 +624,7 @@ async function connectSocket(session) {
         participant: payload.message.participant,
         hasMedia: payload.message.hasMedia,
         timestamp: payload.timestamp,
-      }, { senderName: payload.message.senderName, isGroup });
+      }, { senderName: isGroup ? null : payload.message.senderName, isGroup });
 
       if (io) io.emit('message:incoming', payload);
 
