@@ -700,6 +700,23 @@ async function connectSocket(session) {
       // en 1:1, el teléfono del contacto.
       const chatJid = isGroup ? normalizeJid(remoteJid) : contactJid;
 
+      // Bloque `contact` de primer nivel para n8n: identidad del contacto lista
+      // para usar en prompts (saludar por nombre, verificar por teléfono...).
+      // Si el perfil enriquecido ya está en caché (lo pidió el panel), viaja
+      // también — sin coste de latencia: NUNCA se consulta en caliente aquí.
+      const phoneOf = (j) => (String(j || '').endsWith('@s.whatsapp.net') ? j.split('@')[0] : null);
+      const cachedProfile = contactProfileCache.get(`${session.clientId}|${contactJid}`)?.value || null;
+      const contact = {
+        jid: contactJid,
+        phone: phoneOf(contactJid),
+        name: msg.pushName || null,
+        isGroup,
+        groupJid: isGroup ? remoteJid : null,
+        participantPhone: isGroup ? phoneOf(normalizeJid(msg.key.participantPn || msg.key.participant)) : null,
+        about: cachedProfile?.about || null,
+        business: cachedProfile?.business || null,
+      };
+
       const payload = {
         type: 'incoming_message',
         source: 'whatsapp-web',
@@ -707,6 +724,7 @@ async function connectSocket(session) {
         clientId: session.clientId,
         mode: session.mode,
         timestamp: new Date().toISOString(),
+        contact,
         message: {
           id: msg.key.id || null,
           from: remoteJid,
