@@ -114,6 +114,18 @@ async function forwardIncoming(clientId, payload, extras = {}) {
       out.handoff_motivo = response.data.handoff_motivo ? String(response.data.handoff_motivo) : null;
       out.handoff_resumen = response.data.handoff_resumen ? String(response.data.handoff_resumen) : null;
     }
+    // Adjuntos EXPLÍCITOS: n8n puede pedir que ciertos archivos se envíen como
+    // documento nativo de WhatsApp (además de la detección automática de enlaces
+    // de archivo en el texto, que hace el manager).
+    if (Array.isArray(response.data.files)) {
+      const files = response.data.files
+        .filter((f) => f && f.url)
+        .map((f) => ({
+          url: String(f.url),
+          fileName: f.fileName ? String(f.fileName) : null,
+        }));
+      if (files.length) out.files = files;
+    }
     // Orden de FORMULARIO web: n8n puede pedir que se envíe un enlace a un
     // formulario (Baileys no puede mandar Flows nativos de WhatsApp con garantías).
     // Solo se propaga si trae `url`; la app valida el esquema http/https antes de

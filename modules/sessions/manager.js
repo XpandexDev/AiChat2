@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs/promises');
+const axios = require('axios');
 const QRCode = require('qrcode');
 const pino = require('pino');
 const config = require('../../config');
@@ -117,6 +118,110 @@ function getRecentConversations(clientId = null) {
   }
   result.sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
   return result;
+}
+
+// --- Adjuntos: enviar archivos como documento nativo de WhatsApp ---
+// Cuando n8n responde con enlaces de descarga (o con files:[{url}] explícito),
+// la app descarga el archivo y lo manda como documento — el enlace del texto
+// queda como fallback si la descarga falla. Validación por Content-Type real
+// (no por la pinta de la URL): una página HTML de login nunca se adjunta.
+const FILE_MAX_BYTES = 16 * 1024 * 1024; // 16MB
+const FILE_MAX_PER_REPLY = 3;
+const FILE_MIME_EXT = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'text/csv': 'csv',
+  'application/zip': 'zip',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+};
+const FILE_EXT_ALLOW = new Set(Object.values(FILE_MIME_EXT));
+
+function extractUrls(text) {
+  const matches = String(text || '').match(/https?:\/\/[^\s<>"')\]]+/g) || [];
+  // Sin duplicados, respetando el orden
+  return [...new Set(matches.map((u) => u.replace(/[.,;:!?]+$/, '')))];
+}
+
+function fileNameFromResponse(url, headers, mimetype) {
+  const cd = String(headers['content-disposition'] || '');
+  let name = null;
+  const star = cd.match(/filename\*=(?:UTF-8''|utf-8'')([^;]+)/i);
+  const plain = cd.match(/filename="?([^";]+)"?/i);
+  if (star) { try { name = decodeURIComponent(star[1].trim()); } catch { name = star[1].trim(); } }
+  else if (plain) name = plain[1].trim();
+  if (!name) {
+    try { name = decodeURIComponent(new URL(url).pathname.split('/').pop() || ''); } catch { name = ''; }
+  }
+  name = name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
+  const ext = FILE_MIME_EXT[mimetype];
+  if (name && !/\.[a-z0-9]{2,5}$/i.test(name) && ext) name = `${name}.${ext}`;
+  return name || `archivo.${ext || 'bin'}`;
+}
+
+// Descarga un enlace y devuelve {buffer, mimetype, fileName} si es un archivo
+// adjuntable; null si es una página web, un tipo no permitido o pesa demasiado.
+async function downloadAttachment(url) {
+  const res = await axios.get(url, {
+    responseType: 'arraybuffer',
+    timeout: 20000,
+    maxRedirects: 5,
+    maxContentLength: FILE_MAX_BYTES,
+    maxBodyLength: FILE_MAX_BYTES,
+    validateStatus: (s) => s >= 200 && s < 300,
+  });
+  let mimetype = String(res.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  const fileName = fileNameFromResponse(url, res.headers, mimetype);
+  if (!FILE_MIME_EXT[mimetype]) {
+    // octet-stream genérico: solo si la extensión del nombre es de la lista
+    const ext = (fileName.split('.').pop() || '').toLowerCase();
+    if (mimetype === 'application/octet-stream' && FILE_EXT_ALLOW.has(ext)) {
+      mimetype = Object.keys(FILE_MIME_EXT).find((k) => FILE_MIME_EXT[k] === ext) || mimetype;
+    } else {
+      return null;
+    }
+  }
+  return { buffer: Buffer.from(res.data), mimetype, fileName };
+}
+
+// Envía como documento los adjuntos explícitos (files) y los enlaces de archivo
+// detectados en el texto. Best-effort: un fallo deja el enlace como fallback.
+async function sendFileAttachments(session, jid, replyText, explicitFiles) {
+  const candidates = [];
+  for (const f of (explicitFiles || [])) {
+    candidates.push({ url: f.url, forcedName: f.fileName || null });
+  }
+  const explicitUrls = new Set(candidates.map((c) => c.url));
+  for (const url of extractUrls(replyText)) {
+    if (!explicitUrls.has(url)) candidates.push({ url, forcedName: null });
+  }
+
+  let sentCount = 0;
+  for (const cand of candidates) {
+    if (sentCount >= FILE_MAX_PER_REPLY) break;
+    if (!session.sock) break;
+    try {
+      const file = await downloadAttachment(cand.url);
+      if (!file) continue; // no es un archivo (p.ej. una página web) → el enlace basta
+      const fileName = cand.forcedName || file.fileName;
+      const sent = await session.sock.sendMessage(jid, {
+        document: file.buffer,
+        mimetype: file.mimetype,
+        fileName,
+      });
+      emitOutgoing(session, 'file-attachment', {
+        id: sent?.key?.id || null, to: jid, body: `📎 ${fileName}`,
+      });
+      sentCount += 1;
+      await new Promise((r) => setTimeout(r, 800));
+    } catch (err) {
+      console.error('adjunto no enviado (queda el enlace):', cand.url, '-', err.message);
+    }
+  }
 }
 
 // --- Perfil de contacto (foto, "info", perfil de empresa) ---
@@ -704,6 +809,14 @@ async function connectSocket(session) {
                 console.error('Error enviando respuesta de webhook:', sendErr.message);
                 break;
               }
+            }
+
+            // Adjuntos: enlaces de archivo del texto (y files:[] explícito de n8n)
+            // se envían además como documento nativo de WhatsApp. Best-effort.
+            try {
+              await sendFileAttachments(session, jid, reply.text, reply.files);
+            } catch (attErr) {
+              console.error('sendFileAttachments error:', attErr.message);
             }
 
             // Formulario web: si n8n ordenó un formulario, enviamos su ENLACE como
