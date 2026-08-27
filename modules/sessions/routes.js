@@ -33,6 +33,22 @@ router.get('/chat/recent', (req, res) => {
   }
 });
 
+// Perfil de un contacto (foto, "info", perfil de empresa) vía la sesión Baileys
+// del cliente. Cacheado en RAM; campos null si la privacidad del contacto los oculta.
+router.get('/contact/profile', async (req, res) => {
+  const clientId = Number(req.query.clientId);
+  const jid = String(req.query.jid || '').trim();
+  if (!Number.isInteger(clientId) || clientId <= 0 || !jid) {
+    return res.status(400).json({ error: 'clientId y jid son requeridos' });
+  }
+  try {
+    const profile = await manager.getContactProfile(clientId, jid);
+    return res.json({ profile });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Handoff a humano ---
 // Contactos en modo humano, para hidratar el panel al cargar.
 // (Antes de /:sessionId para que "handoff" no se interprete como un sessionId.)

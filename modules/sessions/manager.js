@@ -99,6 +99,88 @@ function getRecentConversations(clientId = null) {
   return result;
 }
 
+// --- Perfil de contacto (foto, "info", perfil de empresa) ---
+// Se consulta bajo demanda vía la sesión Baileys del cliente y se cachea en RAM
+// (los datos cambian poco). Cada fetch es fail-safe: la privacidad del contacto
+// puede bloquear foto/estado y eso NO es un error.
+const CONTACT_PROFILE_TTL_MS = 6 * 60 * 60 * 1000; // 6h
+const contactProfileCache = new Map(); // `${clientId}|${jid}` -> { value, expiresAt }
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(undefined), ms)),
+  ]);
+}
+
+async function getContactProfile(clientId, rawJid) {
+  const jid = normalizeJid(rawJid);
+  if (!clientId || !jid) return null;
+
+  const key = `${clientId}|${jid}`;
+  const cached = contactProfileCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  // Sesión viva del cliente para consultar
+  const session = [...sessions.values()].find(
+    (s) => s.clientId === clientId && s.sock && s.status === 'ready',
+  );
+  if (!session) {
+    // Sin sesión no podemos consultar; si hay caché caducada, mejor eso que nada.
+    return cached ? cached.value : null;
+  }
+
+  const value = {
+    jid,
+    phone: jid.endsWith('@s.whatsapp.net') ? jid.split('@')[0] : null,
+    isGroup: jid.endsWith('@g.us'),
+    pictureUrl: null,
+    about: null,
+    aboutSetAt: null,
+    business: null,
+    fetchedAt: new Date().toISOString(),
+  };
+
+  try {
+    value.pictureUrl = (await withTimeout(
+      session.sock.profilePictureUrl(jid, 'image', 5000).catch(() => undefined), 6000,
+    )) || null;
+  } catch { /* privacidad o sin foto */ }
+
+  if (!value.isGroup) {
+    try {
+      const st = await withTimeout(session.sock.fetchStatus(jid).catch(() => undefined), 5000);
+      const entry = Array.isArray(st) ? st[0] : null;
+      if (entry?.status?.status) {
+        value.about = String(entry.status.status);
+        value.aboutSetAt = entry.status.setAt ? new Date(entry.status.setAt).toISOString() : null;
+      }
+    } catch { /* privacidad */ }
+
+    try {
+      const biz = await withTimeout(session.sock.getBusinessProfile(jid).catch(() => undefined), 5000);
+      if (biz && (biz.description || biz.category || biz.email || biz.address
+          || (Array.isArray(biz.website) && biz.website.length))) {
+        value.business = {
+          description: biz.description || null,
+          category: biz.category || null,
+          email: biz.email || null,
+          website: Array.isArray(biz.website) ? biz.website.filter(Boolean) : [],
+          address: biz.address || null,
+        };
+      }
+    } catch { /* no es cuenta business */ }
+  }
+
+  contactProfileCache.set(key, { value, expiresAt: Date.now() + CONTACT_PROFILE_TTL_MS });
+  // Poda simple para que la caché no crezca sin límite
+  if (contactProfileCache.size > 500) {
+    const oldest = contactProfileCache.keys().next().value;
+    contactProfileCache.delete(oldest);
+  }
+  return value;
+}
+
 // Emisión + registro unificado de mensajes SALIENTES (antes había 4 copias del
 // mismo objeto con distinto source: auto-reply/webhook-response/form-link/chatbot).
 function emitOutgoing(session, source, message) {
@@ -980,4 +1062,5 @@ module.exports = {
   emit,
   invalidateBotState,
   getRecentConversations,
+  getContactProfile,
 };
