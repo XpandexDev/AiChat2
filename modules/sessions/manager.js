@@ -120,6 +120,57 @@ function getRecentConversations(clientId = null) {
   return result;
 }
 
+// --- Grupos: el bot responde solo si le HABLAN (mención, cita o palabra clave) ---
+// El resto de mensajes de grupo se ven en el panel pero NO se reenvían a n8n
+// (un bot que salta a cada mensaje quema al grupo). GROUP_REPLY_ALL=true en el
+// .env revierte al comportamiento antiguo.
+
+function jidNumber(jid) {
+  return String(jid || '').split('@')[0].split(':')[0];
+}
+
+// Identidades del bot en esta sesión (número real y LID, si lo hay).
+function botIdentities(session) {
+  const ids = new Set();
+  const idNum = jidNumber(session.sock?.user?.id);
+  if (idNum) ids.add(idNum);
+  const lidNum = jidNumber(session.sock?.user?.lid);
+  if (lidNum) ids.add(lidNum);
+  if (session.connectedNumber) ids.add(String(session.connectedNumber));
+  return ids;
+}
+
+// contextInfo puede colgar de cualquier tipo de contenido (texto, imagen...).
+function getContextInfo(message) {
+  if (!message) return null;
+  for (const key of Object.keys(message)) {
+    const ctx = message[key]?.contextInfo;
+    if (ctx) return ctx;
+  }
+  return null;
+}
+
+function groupMessageAddressesBot(session, msg, bodyText) {
+  if (config.GROUP_REPLY_ALL) return true;
+  const ids = botIdentities(session);
+  const ctx = getContextInfo(msg.message);
+
+  // 1) Mención directa (@bot)
+  const mentioned = (ctx?.mentionedJid || []).some((j) => ids.has(jidNumber(j)));
+  if (mentioned) return true;
+
+  // 2) Cita/reply a un mensaje del bot
+  if (ctx?.participant && ids.has(jidNumber(ctx.participant))) return true;
+
+  // 3) Palabra clave configurable (GROUP_TRIGGER_WORDS, comas)
+  if (config.GROUP_TRIGGER_WORDS.length) {
+    const text = ` ${String(bodyText || '').toLowerCase()} `;
+    if (config.GROUP_TRIGGER_WORDS.some((w) => text.includes(w))) return true;
+  }
+
+  return false;
+}
+
 // --- Adjuntos: enviar archivos como documento nativo de WhatsApp ---
 // Cuando n8n responde con enlaces de descarga (o con files:[{url}] explícito),
 // la app descarga el archivo y lo manda como documento — el enlace del texto
@@ -750,6 +801,24 @@ async function connectSocket(session) {
       }, { senderName: isGroup ? null : payload.message.senderName, isGroup });
 
       if (io) io.emit('message:incoming', payload);
+
+      // GRUPOS: responder solo si le hablan al bot (mención/cita/palabra clave).
+      // El mensaje ya está en el panel y en el buffer del chat — el bot lo
+      // "escucha" (viajará como contexto) pero no contesta.
+      if (isGroup && !groupMessageAddressesBot(session, msg, payload.message.body)) {
+        continue;
+      }
+
+      // Cuando SÍ responde en un grupo, adjuntamos lo último que se dijo (del
+      // buffer RAM) para que n8n tenga el contexto de lo no reenviado.
+      if (isGroup) {
+        const conv = chatBuffer.get(session.clientId)?.get(chatJid);
+        const recent = (conv?.messages || []).slice(-11, -1); // sin el actual
+        payload.groupContext = recent.map((m) => ({
+          de: m.direction === 'out' ? 'bot' : (m.senderName || 'participante'),
+          texto: m.body,
+        }));
+      }
 
       // Blacklist: números marcados como "sin bot" (cliente/admin) → silencio
       // total. El bot los ignora por completo: ni reenvío a n8n ni aviso.
