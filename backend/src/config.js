@@ -31,6 +31,8 @@ const optionalVars = [
   'WEBHOOK_SECRET',
   'AUTH_DATA_PATH',
   'HANDOFF_TTL_MINUTES',
+  'GROUP_REPLY_ALL',
+  'GROUP_TRIGGER_WORDS',
 ];
 
 // Loguea explícitamente para que Hostinger lo capture en console.log
@@ -116,4 +118,12 @@ module.exports = {
   // Minutos hasta que un handoff expira solo (rearme perezoso). Vacío/0 = sin
   // expiración: el bot solo vuelve cuando un humano pulsa "Devolver al bot".
   HANDOFF_TTL_MINUTES: process.env.HANDOFF_TTL_MINUTES ? Number(process.env.HANDOFF_TTL_MINUTES) : null,
+  // En GRUPOS el bot responde solo si le hablan (mención @, cita a un mensaje
+  // suyo, o palabra clave). GROUP_REPLY_ALL=true revierte al comportamiento
+  // antiguo (contesta a todo). GROUP_TRIGGER_WORDS: lista separada por comas.
+  GROUP_REPLY_ALL: String(process.env.GROUP_REPLY_ALL || '').toLowerCase() === 'true',
+  GROUP_TRIGGER_WORDS: (process.env.GROUP_TRIGGER_WORDS || '')
+    .split(',')
+    .map((w) => w.trim().toLowerCase())
+    .filter(Boolean),
 };
