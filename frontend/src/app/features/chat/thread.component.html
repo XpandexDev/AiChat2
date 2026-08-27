@@ -6,11 +6,20 @@
 } @else {
   <header class="thread-head">
     <div class="who">
-      <strong>{{ contactLabel }}</strong>
-      <span class="mono dim">{{ contactPhone }}</span>
-      @if (conv.isGroup) {
-        <span class="pill">Grupo</span>
-      }
+      <xp-avatar [url]="profile?.pictureUrl" [name]="contactLabel" [size]="40" />
+      <div class="who-meta">
+        <span class="who-top">
+          <strong>{{ contactLabel }}</strong>
+          @if (conv.isGroup) { <span class="pill">Grupo</span> }
+          @if (profile?.business) { <span class="pill biz">Empresa</span> }
+        </span>
+        <span class="who-sub">
+          <span class="mono dim">{{ contactPhone }}</span>
+          @if (profile?.about) {
+            <span class="dim about" title="Info del contacto">· “{{ profile?.about }}”</span>
+          }
+        </span>
+      </div>
     </div>
     @if (handoff) {
       <div class="handoff-box">
@@ -19,6 +28,18 @@
       </div>
     }
   </header>
+
+  @if (profile?.business; as biz) {
+    <p class="biz-line small dim">
+      @if (biz.category) { <span>{{ biz.category }}</span> }
+      @if (biz.description) { <span>· {{ biz.description }}</span> }
+      @if (biz.email) { <a [href]="'mailto:' + biz.email">{{ biz.email }}</a> }
+      @for (w of biz.website; track w) {
+        <a [href]="w" target="_blank" rel="noopener">{{ w }}</a>
+      }
+      @if (biz.address) { <span>· {{ biz.address }}</span> }
+    </p>
+  }
 
   @if (handoff?.resumen) {
     <p class="handoff-resumen small dim">{{ handoff?.motivo }} — {{ handoff?.resumen }}</p>

@@ -24,7 +24,17 @@
       <tbody>
         @for (h of handoffs(); track h.contactJid) {
           <tr>
-            <td class="mono"><strong>{{ contactNumber(h.contactJid) }}</strong></td>
+            <td>
+              <span class="contact-cell">
+                <xp-avatar [url]="contacts.getForPanel(h.contactJid)?.pictureUrl" [name]="contactNumber(h.contactJid)" [size]="30" />
+                <span>
+                  <strong class="mono small">{{ contactNumber(h.contactJid) }}</strong>
+                  @if (contacts.getForPanel(h.contactJid)?.about; as about) {
+                    <span class="dim small block about-line">“{{ about }}”</span>
+                  }
+                </span>
+              </span>
+            </td>
             <td>{{ h.motivo || '—' }}</td>
             <td>{{ h.resumen || '—' }}</td>
             <td>{{ h.assignedAt ? (h.assignedAt | date: 'dd/MM HH:mm') : '—' }}</td>

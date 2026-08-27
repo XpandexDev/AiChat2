@@ -5,6 +5,8 @@ import {
   ClientPanelService, ClientMeClient, ClientSessionView, ScheduleWindow, SchedulePayload, BlacklistEntry, HandoffContact,
 } from '../../core/api/client-panel.service';
 import { errorToMessage } from '../../core/api/error';
+import { ContactsService } from '../../core/api/contacts.service';
+import { AvatarComponent } from '../../shared/avatar.component';
 import { RevealDirective } from '../../shared/reveal.directive';
 
 interface DayRow {
@@ -22,7 +24,7 @@ const DAY_LABELS: Record<number, string> = {
 @Component({
   selector: 'app-client-dashboard',
   standalone: true,
-  imports: [FormsModule, DatePipe, RevealDirective],
+  imports: [FormsModule, DatePipe, RevealDirective, AvatarComponent],
   templateUrl: './client-dashboard.component.html',
   styleUrl: './client-dashboard.component.scss',
 })
@@ -30,6 +32,7 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
   // Refresco suave del handoff (el panel de cliente no tiene socket).
   private handoffPoll: ReturnType<typeof setInterval> | null = null;
   private readonly api = inject(ClientPanelService);
+  readonly contacts = inject(ContactsService);
 
   readonly timezones = [
     'Europe/Madrid', 'Atlantic/Canary', 'Europe/London', 'Europe/Lisbon',
@@ -90,7 +93,11 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
 
   loadHandoff() {
     this.api.listHandoff().subscribe({
-      next: (l) => this.handoffs.set(l),
+      next: (l) => {
+        this.handoffs.set(l);
+        // Perfiles (foto/nombre/info) de los contactos en handoff
+        for (const h of l) this.contacts.loadForPanel(h.contactJid);
+      },
       error: () => this.handoffs.set([]),
     });
   }

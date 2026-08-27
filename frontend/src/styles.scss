@@ -564,6 +564,23 @@ xp-arrow-btn { display: contents; }
   p { margin: 0; }
 }
 
+/* Avatares de contacto (xp-avatar) */
+.avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+}
+.avatar-initials {
+  color: var(--text-2);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
 /* Chat bubbles (vista /chat y pestaña Conversaciones del cliente) */
 .bubble-row {
   display: flex;

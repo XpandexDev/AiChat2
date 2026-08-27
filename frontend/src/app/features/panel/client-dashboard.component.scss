@@ -90,3 +90,13 @@ a.as-button {
     color: var(--text-dim);
   }
 }
+
+/* Celda de contacto con avatar (handoff) */
+.contact-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+
+  .block { display: block; margin-top: 1px; }
+  .about-line { font-style: italic; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

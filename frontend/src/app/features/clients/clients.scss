@@ -168,6 +168,15 @@
   place-items: center;
 }
 .pad { padding: 12px 14px; }
+
+/* Celda de contacto con avatar (handoff, listas) */
+.contact-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+
+  .block { display: block; margin-top: 1px; }
+}
 @media (max-width: 860px) {
   .conv-card { grid-template-columns: 1fr; height: auto; }
   .conv-list { max-height: 240px; border-right: 0; border-bottom: 1px solid var(--border); }

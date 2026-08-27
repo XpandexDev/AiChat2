@@ -94,7 +94,19 @@
               <tbody>
                 @for (h of clientHandoffs(); track h.contactJid) {
                   <tr>
-                    <td class="mono">{{ contactPhone(h.contactJid) }}</td>
+                    <td>
+                      <span class="contact-cell">
+                        <xp-avatar
+                          [url]="contacts.get(c.id, h.contactJid)?.pictureUrl"
+                          [name]="handoffName(h.contactJid)"
+                          [size]="30"
+                        />
+                        <span>
+                          <strong class="small">{{ handoffName(h.contactJid) }}</strong>
+                          <span class="mono dim small block">{{ contactPhone(h.contactJid) }}</span>
+                        </span>
+                      </span>
+                    </td>
                     <td class="small">{{ h.motivo || '—' }}</td>
                     <td class="right">
                       <button class="ghost mini" (click)="resumeHandoff(h.contactJid)">Devolver al bot</button>
@@ -125,6 +137,11 @@
               [class.selected]="selectedContact() === conv.contactJid"
               (click)="selectContact(conv.contactJid)"
             >
+              <xp-avatar
+                [url]="contacts.get(conv.clientId, conv.contactJid)?.pictureUrl"
+                [name]="contactLabel(conv)"
+                [size]="32"
+              />
               <span class="conv-main">
                 <strong>{{ contactLabel(conv) }}</strong>
                 @if (chat.isHandoff(conv.clientId, conv.contactJid)) {
@@ -146,6 +163,7 @@
             [conv]="selectedConv()"
             [contactLabel]="selectedConv() ? contactLabel(selectedConv()!) : ''"
             [contactPhone]="selectedConv() ? contactPhone(selectedConv()!.contactJid) : ''"
+            [profile]="selectedProfile()"
             [handoff]="selectedHandoff()"
             [canSend]="!!readySession()"
             [sendHint]="'Este cliente no tiene una sesión de WhatsApp conectada para responder.'"

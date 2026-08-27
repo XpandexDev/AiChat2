@@ -5,6 +5,8 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Conversation } from '../../core/api/chat.service';
 import { HandoffInfo } from '../../core/api/sessions.service';
+import { ContactProfile } from '../../core/api/contacts.service';
+import { AvatarComponent } from '../../shared/avatar.component';
 
 /**
  * Hilo de conversación presentacional (burbujas + composer). Reutilizable:
@@ -13,7 +15,7 @@ import { HandoffInfo } from '../../core/api/sessions.service';
 @Component({
   selector: 'app-chat-thread',
   standalone: true,
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, AvatarComponent],
   templateUrl: './thread.component.html',
   styleUrl: './thread.component.scss',
 })
@@ -21,6 +23,7 @@ export class ThreadComponent implements AfterViewChecked {
   @Input() conv: Conversation | null = null;
   @Input() contactLabel = '';
   @Input() contactPhone = '';
+  @Input() profile: ContactProfile | null | undefined;
   @Input() handoff: HandoffInfo | undefined;
   @Input() canSend = false;
   @Input() sendHint = '';

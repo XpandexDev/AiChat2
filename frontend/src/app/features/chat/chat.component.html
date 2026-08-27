@@ -49,10 +49,18 @@
           [class.selected]="selectedContact() === conv.contactJid"
           (click)="selectContact(conv.contactJid)"
         >
+          <xp-avatar
+            [url]="contacts.get(conv.clientId, conv.contactJid)?.pictureUrl"
+            [name]="contactLabel(conv)"
+            [size]="34"
+          />
           <span class="row-main">
             <span class="conv-top">
               <strong>{{ contactLabel(conv) }}</strong>
               @if (conv.isGroup) { <span class="pill">Grupo</span> }
+              @if (contacts.get(conv.clientId, conv.contactJid)?.business) {
+                <span class="pill">Empresa</span>
+              }
               @if (chat.isHandoff(conv.clientId, conv.contactJid)) {
                 <span class="badge warn">Humano</span>
               }
@@ -78,6 +86,7 @@
       [conv]="selectedConv()"
       [contactLabel]="selectedConv() ? contactLabel(selectedConv()!) : ''"
       [contactPhone]="selectedConv() ? contactPhone(selectedConv()!.contactJid) : ''"
+      [profile]="selectedProfile()"
       [handoff]="selectedHandoff()"
       [canSend]="!!readySession()"
       [sendHint]="'El cliente no tiene una sesión de WhatsApp lista (estado ready) para responder.'"

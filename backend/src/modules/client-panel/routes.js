@@ -100,6 +100,18 @@ router.delete('/blacklist', async (req, res) => {
   }
 });
 
+// Perfil de un contacto (foto, "info", empresa) — solo del propio cliente.
+router.get('/contact-profile', async (req, res) => {
+  const jid = String(req.query.jid || '').trim();
+  if (!jid) return res.status(400).json({ error: 'jid requerido' });
+  try {
+    const profile = await sessionsManager.getContactProfile(req.clientId, jid);
+    return res.json({ profile });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 // --- Handoff (contactos con humano al mando) del propio cliente ---
 router.get('/handoff', async (req, res) => {
   try {

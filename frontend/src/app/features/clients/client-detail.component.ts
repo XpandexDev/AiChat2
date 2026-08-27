@@ -6,7 +6,9 @@ import { Client, ClientsService, BlacklistEntry } from '../../core/api/clients.s
 import { SessionsService, WaSession } from '../../core/api/sessions.service';
 import { WebhooksService } from '../../core/api/webhooks.service';
 import { ChatService, Conversation } from '../../core/api/chat.service';
+import { ContactsService } from '../../core/api/contacts.service';
 import { ThreadComponent } from '../chat/thread.component';
+import { AvatarComponent } from '../../shared/avatar.component';
 import { errorToMessage } from '../../core/api/error';
 
 type DetailTab = 'resumen' | 'chat' | 'whatsapp' | 'acceso' | 'integracion';
@@ -14,7 +16,7 @@ type DetailTab = 'resumen' | 'chat' | 'whatsapp' | 'acceso' | 'integracion';
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [RouterLink, FormsModule, DatePipe, ThreadComponent],
+  imports: [RouterLink, FormsModule, DatePipe, ThreadComponent, AvatarComponent],
   templateUrl: './client-detail.component.html',
   styleUrl: './clients.scss',
 })
@@ -25,7 +27,16 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
   private readonly sessionsApi = inject(SessionsService);
   private readonly webhooks = inject(WebhooksService);
   readonly chat = inject(ChatService);
+  readonly contacts = inject(ContactsService);
   private readonly router = inject(Router);
+
+  // Perfiles (foto/info/empresa) de conversaciones y handoffs de este cliente.
+  private readonly profileLoader = effect(() => {
+    const cid = Number(this.id);
+    if (!cid) return;
+    for (const conv of this.clientConvs()) this.contacts.load(cid, conv.contactJid);
+    for (const h of this.clientHandoffs()) this.contacts.load(cid, h.contactJid);
+  });
 
   // --- Pestañas ---
   readonly tab = signal<DetailTab>('resumen');
@@ -146,6 +157,18 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
     if (!contact) return undefined;
     return this.chat.isHandoff(Number(this.id), contact);
   });
+
+  readonly selectedProfile = computed(() => {
+    const contact = this.selectedContact();
+    if (!contact) return undefined;
+    return this.contacts.get(Number(this.id), contact);
+  });
+
+  /** Nombre a mostrar para un contacto en handoff (conversación o teléfono). */
+  handoffName(contactJid: string): string {
+    const conv = this.clientConvs().find((c) => c.contactJid === contactJid);
+    return conv?.senderName || this.contactPhone(contactJid);
+  }
 
   readonly clientHandoffs = computed(() =>
     this.sessionsApi.handoffs().filter((h) => h.clientId === Number(this.id)),

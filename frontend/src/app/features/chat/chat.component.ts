@@ -1,9 +1,11 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { ChatService, Conversation } from '../../core/api/chat.service';
 import { SessionsService } from '../../core/api/sessions.service';
 import { ClientsService, Client } from '../../core/api/clients.service';
+import { ContactsService } from '../../core/api/contacts.service';
 import { ThreadComponent } from './thread.component';
+import { AvatarComponent } from '../../shared/avatar.component';
 
 /**
  * Conversaciones en vivo: clientes → contactos → hilo.
@@ -13,14 +15,23 @@ import { ThreadComponent } from './thread.component';
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [DatePipe, ThreadComponent],
+  imports: [DatePipe, ThreadComponent, AvatarComponent],
   templateUrl: './chat.component.html',
   styleUrl: './chat.component.scss',
 })
 export class ChatComponent implements OnInit {
   readonly chat = inject(ChatService);
+  readonly contacts = inject(ContactsService);
   private readonly sessionsApi = inject(SessionsService);
   private readonly clientsApi = inject(ClientsService);
+
+  // Perfiles (foto/info/empresa) de las conversaciones del cliente visible.
+  // El servicio dedupea y cachea; los grupos solo obtienen foto (backend).
+  private readonly profileLoader = effect(() => {
+    for (const conv of this.clientConvs()) {
+      this.contacts.load(conv.clientId, conv.contactJid);
+    }
+  });
 
   readonly clients = signal<Client[]>([]);
   readonly selectedClientId = signal<number | null>(null);
@@ -66,6 +77,13 @@ export class ChatComponent implements OnInit {
     const contact = this.selectedContact();
     if (id === null || !contact) return undefined;
     return this.chat.isHandoff(id, contact);
+  });
+
+  readonly selectedProfile = computed(() => {
+    const id = this.selectedClientId();
+    const contact = this.selectedContact();
+    if (id === null || !contact) return undefined;
+    return this.contacts.get(id, contact);
   });
 
   /** Sesión lista del cliente seleccionado (para poder responder). */

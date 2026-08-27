@@ -30,6 +30,37 @@
     .mono { font-size: 0.78rem; }
   }
 
+  .who-meta {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+  }
+  .who-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .who-sub {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+
+    .about {
+      font-size: 0.78rem;
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+  .pill.biz {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    border-color: rgba(233, 30, 140, 0.3);
+  }
+
   .handoff-box {
     display: flex;
     align-items: center;
@@ -39,6 +70,15 @@
 
 .handoff-resumen {
   margin: 8px 16px 0;
+}
+
+.biz-line {
+  margin: 8px 16px 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  a { color: var(--accent-ink); }
 }
 
 .thread-scroll {
