@@ -1,0 +1,96 @@
+<div class="settings-head">
+  <a class="muted" routerLink="/panel">← Volver al panel</a>
+  <h1>Ajustes</h1>
+</div>
+
+@if (error(); as msg) {
+  <p class="error-banner">{{ msg }}</p>
+}
+@if (notice(); as msg) {
+  <p class="success-banner">{{ msg }}</p>
+}
+
+@if (me(); as c) {
+  <!-- ==================== API ==================== -->
+  <section class="card" xpReveal [revealDelay]="0">
+    <h2>API</h2>
+    <p class="muted gap-top-sm small">
+      Conecta tus propias herramientas (n8n, CRM, scripts…) con tu WhatsApp:
+      enviar mensajes y archivos, leer conversaciones, gestionar la atención humana.
+      La key da acceso únicamente a los datos de tu cuenta.
+    </p>
+
+    <div class="meta gap-top-sm">
+      @if (c.apiKeyPrefix) {
+        <span class="badge ok">Key activa</span>
+        <span class="mono dim small">{{ c.apiKeyPrefix }}…</span>
+        @if (c.apiKeyCreatedAt) { <span class="dim small">desde {{ c.apiKeyCreatedAt | date: 'mediumDate' }}</span> }
+      } @else {
+        <span class="badge mute">Sin key</span>
+      }
+    </div>
+
+    @if (newApiKey(); as key) {
+      <div class="key-reveal gap-top-sm">
+        <p class="small"><strong>Guarda esta key ahora — no se volverá a mostrar:</strong></p>
+        <div class="key-row">
+          <input readonly [value]="key" class="mono" />
+          <button class="ghost" (click)="copyApiKey()">Copiar</button>
+        </div>
+      </div>
+    }
+
+    <div class="form-actions left gap-top-sm">
+      <button class="primary" (click)="generateApiKey()" [disabled]="apiKeyBusy()">
+        {{ c.apiKeyPrefix ? 'Rotar key' : 'Generar key' }}
+      </button>
+      @if (c.apiKeyPrefix) {
+        <button class="danger" (click)="revokeApiKey()" [disabled]="apiKeyBusy()">Revocar</button>
+      }
+    </div>
+
+    <h3 class="config-title">Configuración</h3>
+    <dl class="kv gap-top-sm">
+      <dt>Base URL</dt><dd class="mono small">{{ apiBase }}</dd>
+      <dt>Autenticación</dt><dd class="mono small">Authorization: Bearer xpk_…</dd>
+      <dt>Límite</dt><dd class="small">120 peticiones/minuto · archivos hasta 16MB</dd>
+      <dt>Documentación</dt>
+      <dd><a href="/api/docs" target="_blank" rel="noopener">Docs interactivas de la API ↗</a></dd>
+    </dl>
+
+    <p class="small dim gap-top-sm">Prueba rápida:</p>
+    <pre class="code-block mono">{{ curlExample() }}</pre>
+  </section>
+
+  <!-- ==================== CUENTA ==================== -->
+  <section class="card" xpReveal [revealDelay]="60">
+    <h2>Cuenta</h2>
+    <dl class="kv gap-top">
+      <dt>Nombre</dt><dd>{{ c.name }}</dd>
+      <dt>Email de acceso</dt><dd>{{ c.email || '—' }}</dd>
+    </dl>
+
+    <h3 class="config-title">Cambiar contraseña</h3>
+    <div class="form-grid pass-grid gap-top-sm">
+      <label>
+        Contraseña actual
+        <input type="password" [(ngModel)]="currentPassword" autocomplete="current-password" />
+      </label>
+      <label>
+        Nueva contraseña
+        <input type="password" [(ngModel)]="newPassword" autocomplete="new-password" placeholder="mínimo 8 caracteres" />
+      </label>
+      <label>
+        Repite la nueva
+        <input type="password" [(ngModel)]="repeatPassword" autocomplete="new-password" />
+      </label>
+    </div>
+    <div class="form-actions left gap-top-sm">
+      <button class="primary" (click)="changePassword()"
+        [disabled]="savingPassword() || !currentPassword || !newPassword">
+        {{ savingPassword() ? 'Guardando…' : 'Cambiar contraseña' }}
+      </button>
+    </div>
+    <p class="dim small gap-top-sm">Al cambiarla se cierran tus otras sesiones abiertas.</p>
+  </section>
+}

@@ -16,6 +16,7 @@ const ACTIONS = [
   'panel.login', 'panel.logout', 'panel.bot_toggle', 'panel.schedule_update',
   'panel.blacklist_add', 'panel.blacklist_remove', 'panel.handoff_resume', 'panel.reply_send',
   'client.api_key_generate', 'client.api_key_revoke',
+  'panel.api_key_generate', 'panel.api_key_revoke', 'panel.password_change',
   'api.message_send', 'api.handoff_start', 'api.handoff_resume', 'api.group_create', 'api.group_join',
 ] as const;
 
@@ -130,6 +131,9 @@ export class AuditLogComponent implements OnInit {
       case 'panel.blacklist_remove': return `El cliente ${res} reactivó el número ${d.number || ''}`;
       case 'panel.handoff_resume': return `El cliente ${res} devolvió al bot el contacto ${this.phone(d.contactJid)}`;
       case 'panel.reply_send': return `El cliente ${res} respondió a ${this.phone(d.to)}${d.length ? ` (${d.length} caracteres)` : ''}`;
+      case 'panel.api_key_generate': return `El cliente ${res} generó/rotó su API key`;
+      case 'panel.api_key_revoke': return `El cliente ${res} revocó su API key`;
+      case 'panel.password_change': return `El cliente ${res} cambió su contraseña del panel`;
       case 'client.api_key_generate': return `Generó/rotó la API key del cliente ${res}`;
       case 'client.api_key_revoke': return `Revocó la API key del cliente ${res}`;
       case 'api.message_send': return `La API del cliente ${res} envió un mensaje a ${this.phone(d.to)}${d.media ? ' (con archivo)' : ''}`;

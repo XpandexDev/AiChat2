@@ -39,6 +39,8 @@ export interface ClientMeClient {
   timezone: string;
   autoReplyText: string | null;
   pairingToken: string | null;
+  apiKeyPrefix: string | null;
+  apiKeyCreatedAt: string | null;
 }
 
 export interface ClientMeResponse {
@@ -98,5 +100,18 @@ export class ClientPanelService {
 
   sendReply(sessionId: string, to: string, text: string): Observable<unknown> {
     return this.http.post(`${this.base}/send`, { sessionId, to, text });
+  }
+
+  // --- Ajustes ---
+  generateApiKey(): Observable<{ apiKey: string; apiKeyPrefix: string }> {
+    return this.http.post<{ apiKey: string; apiKeyPrefix: string }>(`${this.base}/api-key`, {});
+  }
+
+  revokeApiKey(): Observable<{ ok: boolean }> {
+    return this.http.delete<{ ok: boolean }>(`${this.base}/api-key`);
+  }
+
+  changePassword(currentPassword: string, newPassword: string): Observable<{ ok: boolean }> {
+    return this.http.post<{ ok: boolean }>(`${this.base}/password`, { currentPassword, newPassword });
   }
 }

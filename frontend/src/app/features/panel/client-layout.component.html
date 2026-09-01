@@ -8,16 +8,19 @@
       @if (client(); as c) {
         <span class="who">{{ c.name }}</span>
       }
+      <a class="ghost btn-link" routerLink="/panel/ajustes">Ajustes</a>
       <button class="ghost" (click)="logout()">Cerrar sesión</button>
     </div>
   </div>
 </header>
 
+@if (onDashboard()) {
 <nav class="panel-subnav" [class.scrolled]="scrolled()">
   @for (s of sections; track s.id) {
     <button type="button" (click)="scrollTo(s.id)">{{ s.label }}</button>
   }
 </nav>
+}
 
 <main class="panel-main">
   <router-outlet />

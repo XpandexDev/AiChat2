@@ -1,12 +1,12 @@
 import { Component, HostListener, OnDestroy, inject, signal } from '@angular/core';
-import { Router, RouterOutlet } from '@angular/router';
+import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { ClientAuthService } from '../../core/auth/client-auth.service';
 import { ClientRealtimeService } from '../../core/api/client-realtime.service';
 
 @Component({
   selector: 'app-client-layout',
   standalone: true,
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, RouterLink],
   templateUrl: './client-layout.component.html',
   styleUrl: './client-layout.component.scss',
 })
@@ -27,6 +27,10 @@ export class ClientLayoutComponent implements OnDestroy {
     { id: 'horario', label: 'Horario' },
     { id: 'sinbot', label: 'Números sin bot' },
   ];
+
+  onDashboard(): boolean {
+    return !this.router.url.startsWith('/panel/ajustes');
+  }
 
   scrollTo(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });

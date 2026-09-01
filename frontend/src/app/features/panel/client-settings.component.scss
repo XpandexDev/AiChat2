@@ -1,0 +1,47 @@
+:host { display: grid; gap: 18px; }
+
+.settings-head {
+  display: grid;
+  gap: 4px;
+
+  h1 { font-size: 1.5rem; }
+}
+
+.config-title {
+  margin-top: 22px;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+
+.key-reveal {
+  border: 1px solid rgba(233, 30, 140, 0.35);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.key-row {
+  display: flex;
+  gap: 8px;
+
+  input { flex: 1; font-size: 0.8rem; }
+}
+
+.code-block {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 0.78rem;
+  overflow-x: auto;
+  white-space: pre;
+  margin: 6px 0 0;
+}
+
+.pass-grid { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 720px) {
+  .pass-grid { grid-template-columns: 1fr; }
+}
