@@ -4,6 +4,7 @@ const sessionsManager = require('../sessions/manager');
 const blacklist = require('../blacklist/service');
 const { requireAdmin } = require('../../middleware/auth');
 const { auditLog } = require('../../middleware/audit');
+const { invalidateApiKeyCache } = require('../../middleware/api-key');
 
 const router = express.Router();
 
@@ -82,6 +83,34 @@ router.post('/:id/password', async (req, res) => {
     return res.json({ ok: true, passwordConfigured: updated.passwordConfigured });
   } catch (error) {
     if (error.code === 'VALIDATION') return res.status(400).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// --- API key del cliente (API pública v1) ---
+router.post('/:id/api-key', async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const result = await clientsService.generateApiKey(id);
+    if (!result) return res.status(404).json({ error: 'Cliente no encontrado' });
+    invalidateApiKeyCache();
+    auditLog(req.adminId, 'client.api_key_generate', 'client', String(id), {}, req).catch(() => {});
+    // La key en claro SOLO viaja en esta respuesta; no se vuelve a mostrar.
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/:id/api-key', async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const ok = await clientsService.revokeApiKey(id);
+    if (!ok) return res.status(404).json({ error: 'Cliente no encontrado' });
+    invalidateApiKeyCache();
+    auditLog(req.adminId, 'client.api_key_revoke', 'client', String(id), {}, req).catch(() => {});
+    return res.json({ ok: true });
+  } catch (error) {
     return res.status(500).json({ error: error.message });
   }
 });

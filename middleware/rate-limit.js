@@ -27,4 +27,26 @@ function makeLoginLimiter() {
 const loginLimiter = makeLoginLimiter();        // admin
 const clientLoginLimiter = makeLoginLimiter();  // panel cliente (contador independiente)
 
-module.exports = { loginLimiter, clientLoginLimiter, makeLoginLimiter };
+// API pública v1: límite por API KEY (no por IP — varias integraciones pueden
+// compartir IP y una key no debe agotar a otra). 120 req/min por defecto.
+const API_RATE_MAX = Number(process.env.API_RATE_MAX) || 120;
+
+function makeApiLimiter() {
+  return rateLimit({
+    windowMs: 60 * 1000,
+    max: API_RATE_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator(req) {
+      return req.apiKeyHash || req.ip || 'unknown';
+    },
+    handler(_req, res) {
+      res.set('Retry-After', '60');
+      res.status(429).json({
+        error: { code: 'rate_limited', message: 'Límite de peticiones alcanzado. Reintenta en un minuto.' },
+      });
+    },
+  });
+}
+
+module.exports = { loginLimiter, clientLoginLimiter, makeLoginLimiter, makeApiLimiter };
