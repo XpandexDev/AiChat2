@@ -5,6 +5,7 @@ const sessionsManager = require('../sessions/manager');
 const blacklist = require('../blacklist/service');
 const handoff = require('../handoff/service');
 const { requireClient } = require('../../middleware/client-auth');
+const { auditLog } = require('../../middleware/audit');
 
 const router = express.Router();
 
@@ -44,6 +45,7 @@ router.patch('/bot', async (req, res) => {
   try {
     await panelService.setBotEnabled(req.clientId, enabled);
     sessionsManager.invalidateBotState(req.clientId);
+    auditLog(null, 'panel.bot_toggle', 'client', String(req.clientId), { enabled }, req).catch(() => {});
     return res.json({ ok: true, botEnabled: enabled });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -63,6 +65,10 @@ router.put('/schedule', async (req, res) => {
   try {
     const result = await panelService.replaceSchedule(req.clientId, req.body || {});
     sessionsManager.invalidateBotState(req.clientId);
+    auditLog(null, 'panel.schedule_update', 'client', String(req.clientId), {
+      scheduleEnabled: Boolean(req.body?.scheduleEnabled),
+      windows: Array.isArray(req.body?.windows) ? req.body.windows.length : 0,
+    }, req).catch(() => {});
     return res.json(result);
   } catch (error) {
     if (error.code === 'VALIDATION') return res.status(400).json({ error: error.message });
@@ -83,7 +89,9 @@ router.post('/blacklist', async (req, res) => {
   const jid = sessionsManager.normalizeJid(req.body?.number);
   if (!jid) return res.status(400).json({ error: 'Número inválido. Usa formato internacional, p.ej. 34600111222' });
   try {
-    return res.json(await blacklist.add(req.clientId, jid, req.body?.note));
+    const list = await blacklist.add(req.clientId, jid, req.body?.note);
+    auditLog(null, 'panel.blacklist_add', 'client', String(req.clientId), { number: jid.split('@')[0] }, req).catch(() => {});
+    return res.json(list);
   } catch (error) {
     if (error.code === 'VALIDATION') return res.status(400).json({ error: error.message });
     return res.status(500).json({ error: error.message });
@@ -94,7 +102,9 @@ router.delete('/blacklist', async (req, res) => {
   const jid = sessionsManager.normalizeJid(req.query?.number || req.body?.number);
   if (!jid) return res.status(400).json({ error: 'Número inválido' });
   try {
-    return res.json(await blacklist.remove(req.clientId, jid));
+    const list = await blacklist.remove(req.clientId, jid);
+    auditLog(null, 'panel.blacklist_remove', 'client', String(req.clientId), { number: jid.split('@')[0] }, req).catch(() => {});
+    return res.json(list);
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -127,6 +137,7 @@ router.post('/contact/resume', async (req, res) => {
   try {
     const ok = await handoff.resume(req.clientId, contactJid);
     sessionsManager.emit('handoff:resumed', { clientId: req.clientId, contactJid, timestamp: new Date().toISOString() });
+    auditLog(null, 'panel.handoff_resume', 'client', String(req.clientId), { contactJid }, req).catch(() => {});
     return res.json({ ok });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -148,6 +159,7 @@ router.post('/send', async (req, res) => {
       return res.status(403).json({ error: 'Esa sesión no es de este cliente' });
     }
     const result = await sessionsManager.sendMessage(sessionId, to, text);
+    auditLog(null, 'panel.reply_send', 'client', String(req.clientId), { to: to.split('@')[0], length: text.length }, req).catch(() => {});
     return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message });

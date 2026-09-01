@@ -67,7 +67,7 @@
               <p class="tl-text">{{ describe(e) }}</p>
               <p class="tl-meta dim small">
                 <span class="mono">{{ e.created_at | date: 'HH:mm' }}</span>
-                · admin #{{ e.admin_id || '—' }}
+                · {{ actor(e) }}
                 @if (e.ip_address) { · <span class="mono">{{ e.ip_address }}</span> }
               </p>
             </div>

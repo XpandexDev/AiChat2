@@ -1,6 +1,7 @@
-import { Component, HostListener, inject, signal } from '@angular/core';
+import { Component, HostListener, OnDestroy, inject, signal } from '@angular/core';
 import { Router, RouterOutlet } from '@angular/router';
 import { ClientAuthService } from '../../core/auth/client-auth.service';
+import { ClientRealtimeService } from '../../core/api/client-realtime.service';
 
 @Component({
   selector: 'app-client-layout',
@@ -9,7 +10,9 @@ import { ClientAuthService } from '../../core/auth/client-auth.service';
   templateUrl: './client-layout.component.html',
   styleUrl: './client-layout.component.scss',
 })
-export class ClientLayoutComponent {
+export class ClientLayoutComponent implements OnDestroy {
+  private readonly rt = inject(ClientRealtimeService);
+  private readonly disconnectRt = this.rt.connect();
   private readonly auth = inject(ClientAuthService);
   private readonly router = inject(Router);
 
@@ -32,6 +35,10 @@ export class ClientLayoutComponent {
   @HostListener('window:scroll')
   onScroll() {
     this.scrolled.set(window.scrollY > 8);
+  }
+
+  ngOnDestroy() {
+    this.disconnectRt();
   }
 
   logout() {

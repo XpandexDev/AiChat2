@@ -92,6 +92,7 @@
       [sendHint]="'El cliente no tiene una sesión de WhatsApp lista (estado ready) para responder.'"
       [sending]="sending()"
       (send)="send($event)"
+      (sendFile)="sendFileAttachment($event)"
       (resume)="resume()"
     />
   </section>

@@ -1,0 +1,117 @@
+<header class="page-head">
+  <div>
+    <h1>Inicio</h1>
+    <p class="muted">El pulso de tus bots: conexiones, conversaciones y volumen de mensajes.</p>
+  </div>
+  <div class="actions">
+    <button class="ghost" (click)="load()">Refrescar</button>
+  </div>
+</header>
+
+@if (overview(); as o) {
+  <!-- Tiles héroe -->
+  <div class="stat-grid">
+    <div class="card stat-tile">
+      <span class="stat-label">Sesiones WhatsApp</span>
+      <span class="stat-value">{{ o.sessions.ready }}<span class="stat-sub">/{{ o.sessions.total }}</span></span>
+      <span class="dim small">conectadas</span>
+    </div>
+    <a class="card stat-tile interactive" routerLink="/chat">
+      <span class="stat-label">Conversaciones hoy</span>
+      <span class="stat-value">{{ o.activeConversations }}</span>
+      @if (unreadTotal() > 0) {
+        <span class="badge info">{{ unreadTotal() }} sin leer</span>
+      } @else {
+        <span class="dim small">al día</span>
+      }
+    </a>
+    <a class="card stat-tile interactive" routerLink="/chat">
+      <span class="stat-label">Atención humana</span>
+      <span class="stat-value">{{ o.handoffs }}</span>
+      <span class="dim small">{{ o.handoffs === 1 ? 'contacto en handoff' : 'contactos en handoff' }}</span>
+    </a>
+    <div class="card stat-tile">
+      <span class="stat-label">Mensajes hoy</span>
+      <span class="stat-value">{{ o.today.in + o.today.out }}</span>
+      <span class="dim small">
+        <span class="swatch" [style.background]="colorIn"></span>{{ o.today.in }} entrantes
+        · <span class="swatch" [style.background]="colorOut"></span>{{ o.today.out }} salientes
+      </span>
+    </div>
+  </div>
+
+  <!-- Serie 14 días -->
+  <section class="card chart-card">
+    <div class="card-head">
+      <h2>Mensajes · últimos 14 días</h2>
+      <div class="legend">
+        <span><span class="swatch" [style.background]="colorIn"></span>Entrantes</span>
+        <span><span class="swatch" [style.background]="colorOut"></span>Salientes</span>
+      </div>
+    </div>
+
+    <div class="chart-wrap">
+      @if (hoverIdx() !== null && bars()[hoverIdx()!]; as b) {
+        <div class="chart-tip" [style.left.%]="((hoverIdx()! + 0.5) / bars().length) * 100">
+          <strong>{{ b.day | date: 'EEE d MMM' }}</strong>
+          <span><span class="swatch" [style.background]="colorIn"></span>{{ b.in }} entrantes</span>
+          <span><span class="swatch" [style.background]="colorOut"></span>{{ b.out }} salientes</span>
+        </div>
+      }
+      <svg [attr.viewBox]="'0 0 ' + chartW() + ' ' + (chartH + 22)" preserveAspectRatio="xMidYMax meet" role="img"
+        aria-label="Mensajes entrantes y salientes por día, últimos 14 días">
+        <!-- base -->
+        <line x1="0" [attr.y1]="chartH + 0.5" [attr.x2]="chartW()" [attr.y2]="chartH + 0.5" class="axis" />
+        @for (b of bars(); track b.day; let i = $index) {
+          <g
+            (mouseenter)="hoverIdx.set(i)"
+            (mouseleave)="hoverIdx.set(null)"
+            [class.dimmed]="hoverIdx() !== null && hoverIdx() !== i"
+          >
+            <!-- zona de hover más ancha que la barra -->
+            <rect [attr.x]="i * 26" y="0" width="26" [attr.height]="chartH" fill="transparent" />
+            @if (b.hIn > 0) {
+              <rect [attr.x]="b.x" [attr.y]="b.yIn" width="16" [attr.height]="b.hIn"
+                [attr.fill]="colorIn" [attr.rx]="b.hOut > 0 ? 0 : 4" />
+            }
+            @if (b.hOut > 0) {
+              <rect [attr.x]="b.x" [attr.y]="b.yOut" width="16" [attr.height]="b.hOut"
+                [attr.fill]="colorOut" rx="4" />
+            }
+            <text [attr.x]="i * 26 + 13" [attr.y]="chartH + 15" class="day-label">{{ b.label }}</text>
+          </g>
+        }
+      </svg>
+    </div>
+  </section>
+
+  <!-- Top clientes -->
+  <section class="card">
+    <h2>Actividad por cliente · 14 días</h2>
+    @if (!o.byClient.length) {
+      <div class="empty gap-top">
+        <p>Sin datos todavía</p>
+        <span>Los contadores empiezan a acumularse desde hoy.</span>
+      </div>
+    } @else {
+      <table class="data gap-top">
+        <thead>
+          <tr><th>Cliente</th><th class="right">Entrantes</th><th class="right">Salientes</th><th class="right">Total</th><th></th></tr>
+        </thead>
+        <tbody>
+          @for (c of o.byClient; track c.clientId) {
+            <tr>
+              <td><strong>{{ c.name }}</strong></td>
+              <td class="right mono">{{ c.in }}</td>
+              <td class="right mono">{{ c.out }}</td>
+              <td class="right mono"><strong>{{ c.in + c.out }}</strong></td>
+              <td class="right"><a class="ghost btn-link" [routerLink]="['/clients', c.clientId]">Abrir</a></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </section>
+} @else if (loading()) {
+  <p class="muted">Cargando…</p>
+}

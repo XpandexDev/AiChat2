@@ -242,6 +242,20 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
     });
   }
 
+  sendChatFile(file: { dataBase64: string; mimetype: string; fileName: string }) {
+    const session = this.readySession();
+    const contact = this.selectedContact();
+    if (!session || !contact) return;
+    this.sending.set(true);
+    this.sessionsApi.sendMedia(session.sessionId, contact, file).subscribe({
+      next: () => this.sending.set(false),
+      error: (err) => {
+        this.sending.set(false);
+        this.error.set(errorToMessage(err, 'No se pudo enviar el archivo'));
+      },
+    });
+  }
+
   resumeHandoff(contactJid: string) {
     this.chat.resumeHandoff(Number(this.id), contactJid).subscribe({
       next: () => this.notice.set('Conversación devuelta al bot'),

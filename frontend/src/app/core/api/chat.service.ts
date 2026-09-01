@@ -11,6 +11,8 @@ export interface ChatMessage {
   senderName?: string | null;
   participant?: string | null;
   hasMedia?: boolean;
+  msgType?: string | null;
+  fileName?: string | null;
   source?: string;
 }
 
@@ -74,6 +76,8 @@ export class ChatService {
           senderName: m.senderName ?? null,
           participant: m.participant ?? null,
           hasMedia: Boolean(m.hasMedia),
+          msgType: m.msgType ?? null,
+          fileName: m.fileName ?? null,
           source: m.source,
         })),
         unread: 0,
@@ -113,6 +117,8 @@ export class ChatService {
         senderName: ev.senderName ?? null,
         participant: ev.participant ?? null,
         hasMedia: ev.hasMedia,
+        msgType: ev.msgType ?? null,
+        fileName: ev.fileName ?? null,
         source: ev.source,
       });
       // En grupos el nombre por mensaje es de quien habló; el título del hilo

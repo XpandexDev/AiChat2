@@ -169,6 +169,7 @@
             [sendHint]="'Este cliente no tiene una sesión de WhatsApp conectada para responder.'"
             [sending]="sending()"
             (send)="sendChat($event)"
+            (sendFile)="sendChatFile($event)"
             (resume)="selectedContact() && resumeHandoff(selectedContact()!)"
           />
         </section>

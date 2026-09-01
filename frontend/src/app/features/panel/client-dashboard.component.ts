@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import {
@@ -8,6 +8,7 @@ import { errorToMessage } from '../../core/api/error';
 import { ContactsService } from '../../core/api/contacts.service';
 import { AvatarComponent } from '../../shared/avatar.component';
 import { RevealDirective } from '../../shared/reveal.directive';
+import { ClientRealtimeService } from '../../core/api/client-realtime.service';
 
 interface DayRow {
   weekday: number;
@@ -33,6 +34,22 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
   private handoffPoll: ReturnType<typeof setInterval> | null = null;
   private readonly api = inject(ClientPanelService);
   readonly contacts = inject(ContactsService);
+  readonly rt = inject(ClientRealtimeService);
+
+  // Tiempo real: al llegar un evento de la sala del cliente (handoff, sesión,
+  // mensaje) se refrescan handoffs y estado de conexión. El polling de 30s
+  // queda como red de seguridad.
+  private readonly liveRefresh = effect(() => {
+    if (this.rt.tick() > 0) this.refreshLive();
+  });
+
+  private refreshLive() {
+    this.loadHandoff();
+    this.api.me().subscribe({
+      next: (r) => { this.me.set(r.client); this.sessions.set(r.sessions || []); },
+      error: () => {},
+    });
+  }
 
   readonly timezones = [
     'Europe/Madrid', 'Atlantic/Canary', 'Europe/London', 'Europe/Lisbon',

@@ -1,5 +1,5 @@
 import {
-  AfterViewChecked, Component, ElementRef, EventEmitter, Input, Output, ViewChild,
+  AfterViewChecked, Component, ElementRef, EventEmitter, Input, Output, ViewChild, signal,
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -30,9 +30,11 @@ export class ThreadComponent implements AfterViewChecked {
   @Input() sending = false;
 
   @Output() send = new EventEmitter<string>();
+  @Output() sendFile = new EventEmitter<{ dataBase64: string; mimetype: string; fileName: string }>();
   @Output() resume = new EventEmitter<void>();
 
   draft = '';
+  readonly fileError = signal<string | null>(null);
 
   @ViewChild('scroller') private scroller?: ElementRef<HTMLDivElement>;
   private lastCount = -1;
@@ -51,6 +53,43 @@ export class ThreadComponent implements AfterViewChecked {
     if (!text || !this.canSend || this.sending) return;
     this.send.emit(text);
     this.draft = '';
+  }
+
+  mediaUrl(m: { id: string | null }): string {
+    return `/api/sessions/chat/media?clientId=${this.conv?.clientId}&id=${encodeURIComponent(m.id || '')}`;
+  }
+
+  mediaKind(m: { msgType?: string | null }): 'image' | 'video' | 'audio' | 'file' {
+    switch (m.msgType) {
+      case 'imageMessage':
+      case 'stickerMessage': return 'image';
+      case 'videoMessage': return 'video';
+      case 'audioMessage': return 'audio';
+      default: return 'file';
+    }
+  }
+
+  onFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    this.fileError.set(null);
+    if (file.size > 16 * 1024 * 1024) {
+      this.fileError.set('Máximo 16MB por archivo');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      const base64 = dataUrl.split(',')[1] || '';
+      this.sendFile.emit({
+        dataBase64: base64,
+        mimetype: file.type || 'application/octet-stream',
+        fileName: file.name,
+      });
+    };
+    reader.readAsDataURL(file);
   }
 
   sourceLabel(source?: string): string {

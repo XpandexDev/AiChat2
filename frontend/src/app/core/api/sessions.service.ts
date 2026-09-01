@@ -38,6 +38,7 @@ export interface RealtimeEvent {
   participant?: string | null;
   hasMedia?: boolean;
   msgType?: string;
+  fileName?: string | null;
   source?: string;
 }
 
@@ -149,6 +150,9 @@ export class SessionsService implements OnDestroy {
         timestamp: p.timestamp,
         contactJid: p.message?.contactJid || p.message?.to,
         messageId: p.message?.id ?? null,
+        hasMedia: Boolean(p.message?.hasMedia),
+        msgType: p.message?.msgType,
+        fileName: p.message?.fileName ?? null,
         source: p.source,
       });
     });
@@ -208,6 +212,10 @@ export class SessionsService implements OnDestroy {
 
   sendMessage(sessionId: string, to: string, text: string): Observable<unknown> {
     return this.http.post('/api/messages/send', { sessionId, to, text });
+  }
+
+  sendMedia(sessionId: string, to: string, file: { dataBase64: string; mimetype: string; fileName: string; caption?: string }): Observable<unknown> {
+    return this.http.post('/api/messages/send-media', { sessionId, to, ...file });
   }
 
   createGroup(sessionId: string, subject: string, participants: string[]): Observable<{ id: string; subject: string }> {

@@ -33,7 +33,11 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./core/layout/layout.component').then((m) => m.LayoutComponent),
     children: [
-      { path: '', pathMatch: 'full', redirectTo: 'clients' },
+      { path: '', pathMatch: 'full', redirectTo: 'inicio' },
+      {
+        path: 'inicio',
+        loadComponent: () => import('./features/home/home.component').then((m) => m.HomeComponent),
+      },
       {
         path: 'clients',
         loadChildren: () => import('./features/clients/clients.routes').then((m) => m.CLIENTS_ROUTES),

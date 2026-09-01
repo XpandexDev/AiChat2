@@ -13,6 +13,8 @@ const ACTIONS = [
   'session.start', 'session.stop', 'session.delete',
   'group.create', 'group.join',
   'handoff.resume', 'message.send', 'webhook.test',
+  'panel.login', 'panel.logout', 'panel.bot_toggle', 'panel.schedule_update',
+  'panel.blacklist_add', 'panel.blacklist_remove', 'panel.handoff_resume', 'panel.reply_send',
 ] as const;
 
 interface DayGroup {
@@ -118,6 +120,14 @@ export class AuditLogComponent implements OnInit {
       case 'handoff.resume': return `Devolvió al bot el contacto ${this.phone(d.contactJid)} (cliente ${res})`;
       case 'message.send': return `Envió un mensaje manual a ${this.phone(d.to)}${d.length ? ` (${d.length} caracteres)` : ''}`;
       case 'webhook.test': return `Probó el webhook del cliente ${res}${d.status ? ` (HTTP ${d.status})` : ''}`;
+      case 'panel.login': return `El cliente ${res} entró en su panel`;
+      case 'panel.logout': return `El cliente ${res} cerró sesión en su panel`;
+      case 'panel.bot_toggle': return `El cliente ${res} ${d.enabled ? 'encendió' : 'apagó'} su bot`;
+      case 'panel.schedule_update': return `El cliente ${res} actualizó su horario (${d.windows ?? 0} franjas${d.scheduleEnabled === false ? ', horario desactivado' : ''})`;
+      case 'panel.blacklist_add': return `El cliente ${res} silenció el número ${d.number || ''}`;
+      case 'panel.blacklist_remove': return `El cliente ${res} reactivó el número ${d.number || ''}`;
+      case 'panel.handoff_resume': return `El cliente ${res} devolvió al bot el contacto ${this.phone(d.contactJid)}`;
+      case 'panel.reply_send': return `El cliente ${res} respondió a ${this.phone(d.to)}${d.length ? ` (${d.length} caracteres)` : ''}`;
       default: return `${e.action} ${e.resource_type || ''} ${res}`.trim();
     }
   }
@@ -135,10 +145,17 @@ export class AuditLogComponent implements OnInit {
     if (action.startsWith('client.')) return 'client';
     if (action.startsWith('session.')) return 'session';
     if (action.startsWith('group.')) return 'session';
+    if (action.startsWith('panel.')) return 'panel';
     if (action.startsWith('handoff.')) return 'handoff';
     if (action.startsWith('message.')) return 'message';
     if (action.startsWith('webhook.')) return 'webhook';
     return 'other';
+  }
+
+  /** Quién realizó la acción (los panel.* los hace el propio cliente, sin admin). */
+  actor(e: AuditLogEntry): string {
+    if (e.action?.startsWith('panel.')) return 'cliente (panel)';
+    return e.admin_id ? `admin #${e.admin_id}` : '—';
   }
 
   detailsPreview(d: any): string {

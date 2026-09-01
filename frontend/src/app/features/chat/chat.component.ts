@@ -139,6 +139,22 @@ export class ChatComponent implements OnInit {
     });
   }
 
+  sendFileAttachment(file: { dataBase64: string; mimetype: string; fileName: string }) {
+    const session = this.readySession();
+    const contact = this.selectedContact();
+    const clientId = this.selectedClientId();
+    if (!session || !contact || clientId === null) return;
+    this.sending.set(true);
+    this.error.set(null);
+    this.sessionsApi.sendMedia(session.sessionId, contact, file).subscribe({
+      next: () => { this.sending.set(false); this.chat.markRead(clientId, contact); },
+      error: (err) => {
+        this.sending.set(false);
+        this.error.set(err?.error?.error || 'No se pudo enviar el archivo');
+      },
+    });
+  }
+
   resume() {
     const clientId = this.selectedClientId();
     const contact = this.selectedContact();

@@ -54,7 +54,27 @@
           @if (conv.isGroup && m.direction === 'in' && m.senderName) {
             <span class="bubble-sender">{{ m.senderName }}</span>
           }
-          <span class="bubble-body">{{ m.body || (m.hasMedia ? '📎 (adjunto)' : '') }}</span>
+          @if (m.hasMedia && m.id) {
+            @switch (mediaKind(m)) {
+              @case ('image') {
+                <a [href]="mediaUrl(m)" target="_blank" rel="noopener">
+                  <img class="bubble-media" [src]="mediaUrl(m)" alt="" loading="lazy" />
+                </a>
+              }
+              @case ('video') { <video class="bubble-media" controls preload="metadata" [src]="mediaUrl(m)"></video> }
+              @case ('audio') { <audio class="bubble-audio" controls preload="metadata" [src]="mediaUrl(m)"></audio> }
+              @default {
+                <a class="bubble-file" [href]="mediaUrl(m)" target="_blank" rel="noopener">
+                  📎 {{ m.fileName || 'Documento' }}
+                </a>
+              }
+            }
+            @if (m.body && !m.body.startsWith('📎')) {
+              <span class="bubble-body">{{ m.body }}</span>
+            }
+          } @else {
+            <span class="bubble-body">{{ m.body || (m.hasMedia ? '📎 (adjunto)' : '') }}</span>
+          }
           <span class="bubble-meta">
             @if (m.direction === 'out' && m.source) {
               <span class="src">{{ sourceLabel(m.source) }}</span>
@@ -66,8 +86,14 @@
     }
   </div>
 
+  @if (fileError(); as msg) {
+    <p class="error-banner file-error">{{ msg }}</p>
+  }
   <footer class="thread-composer">
     @if (canSend) {
+      <input type="file" #fileInput hidden (change)="onFileSelected($event)" />
+      <button class="ghost attach" type="button" title="Adjuntar archivo"
+        (click)="fileInput.click()" [disabled]="sending">📎</button>
       <textarea
         rows="1"
         [(ngModel)]="draft"

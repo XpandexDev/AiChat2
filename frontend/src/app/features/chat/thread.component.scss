@@ -104,4 +104,24 @@
     max-height: 120px;
   }
   .composer-hint { margin: 4px auto; }
+  .attach { padding: 9px 12px; flex: none; }
+}
+
+.file-error { margin: 8px 16px 0; }
+
+/* Medios dentro de las burbujas */
+.bubble-media {
+  display: block;
+  max-width: min(260px, 60vw);
+  max-height: 320px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+.bubble-audio { max-width: 240px; }
+.bubble-file {
+  display: inline-block;
+  font-weight: 600;
+  text-decoration: underline;
+  color: inherit;
+  word-break: break-all;
 }

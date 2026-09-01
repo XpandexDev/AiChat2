@@ -33,6 +33,28 @@ router.get('/chat/recent', (req, res) => {
   }
 });
 
+// Media de un mensaje del chat (imagen/audio/vídeo/documento), descargada bajo
+// demanda de los servidores de WhatsApp (o del buffer si fue un envío nuestro).
+router.get('/chat/media', async (req, res) => {
+  const clientId = Number(req.query.clientId);
+  const msgId = String(req.query.id || '').trim();
+  if (!Number.isInteger(clientId) || clientId <= 0 || !msgId) {
+    return res.status(400).json({ error: 'clientId e id son requeridos' });
+  }
+  try {
+    const media = await manager.getChatMedia(clientId, msgId);
+    if (!media) return res.status(404).json({ error: 'Media no disponible (expiró del buffer)' });
+    res.set('Content-Type', media.mimetype || 'application/octet-stream');
+    if (media.fileName) {
+      res.set('Content-Disposition', `inline; filename="${encodeURIComponent(media.fileName)}"`);
+    }
+    res.set('Cache-Control', 'private, max-age=3600');
+    return res.send(media.buffer);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Perfil de un contacto (foto, "info", perfil de empresa) vía la sesión Baileys
 // del cliente. Cacheado en RAM; campos null si la privacidad del contacto los oculta.
 router.get('/contact/profile', async (req, res) => {
