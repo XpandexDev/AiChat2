@@ -1,1 +1,0 @@
-import"./chunk-QEZ3K4DX.js";var o=[{path:"",loadComponent:()=>import("./chunk-WRGQTCYM.js").then(t=>t.ClientDashboardComponent)},{path:"ajustes",loadComponent:()=>import("./chunk-CWYZCNRB.js").then(t=>t.ClientSettingsComponent)}];export{o as PANEL_ROUTES};

@@ -9,6 +9,7 @@ const webhooks = require('../webhooks/service');
 const handoff = require('../handoff/service');
 const blacklist = require('../blacklist/service');
 const { isBotActive } = require('../../lib/bot-schedule');
+const { dispatchEvent } = require('../events/dispatcher');
 
 const baileysPromise = import('@whiskeysockets/baileys');
 const baileysLogger = pino({ level: 'silent' });
@@ -62,8 +63,16 @@ function emitSessionUpdate(sessionId) {
 // Emite un evento socket genérico al panel (usado por el handoff desde routes,
 // para no acoplar las rutas a la instancia de socket.io que vive aquí).
 // Si el payload lleva clientId, también llega a la sala de ese cliente.
+const EVENT_BRIDGE = {
+  'handoff:started': 'handoff.started',
+  'handoff:resumed': 'handoff.resumed',
+};
+
 function emit(event, data) {
   scopedEmit(event, data?.clientId ?? null, data);
+  // Puente al webhook de EVENTOS del cliente (API v1)
+  const type = EVENT_BRIDGE[event];
+  if (type && data?.clientId) dispatchEvent(data.clientId, type, data);
 }
 
 // --- Chat en vivo: ring buffer de mensajes EN RAM (sin BD, por decisión de
@@ -145,6 +154,27 @@ function bumpDailyStat(clientId, direction) {
      ON DUPLICATE KEY UPDATE ${col} = ${col} + 1`,
     [clientId],
   ).catch(() => {}); // best-effort: una métrica nunca frena un mensaje
+}
+
+// --- Acuses de entrega/lectura (ticks de WhatsApp, RAM) ---
+const MESSAGE_STATUS_BY_CODE = { 2: 'sent', 3: 'delivered', 4: 'read', 5: 'read' };
+const STATUS_RANK = { sent: 1, delivered: 2, read: 3 };
+const messageStatusStore = new Map(); // `${clientId}|${msgId}` -> { status, at, to }
+
+function recordMessageStatus(clientId, msgId, status, to) {
+  const key = `${clientId}|${msgId}`;
+  const prev = messageStatusStore.get(key);
+  if (prev && STATUS_RANK[prev.status] >= STATUS_RANK[status]) return null;
+  const entry = { status, at: new Date().toISOString(), to: to || prev?.to || null };
+  messageStatusStore.set(key, entry);
+  if (messageStatusStore.size > 2000) {
+    messageStatusStore.delete(messageStatusStore.keys().next().value);
+  }
+  return entry;
+}
+
+function getMessageStatus(clientId, msgId) {
+  return messageStatusStore.get(`${clientId}|${msgId}`) || null;
 }
 
 // --- Medios del chat: descarga bajo demanda (RAM, sin persistir) ---
@@ -624,6 +654,13 @@ function emitOutgoing(session, source, message) {
     timestamp: payload.timestamp,
   });
   scopedEmit('message:outgoing', session.clientId, payload);
+  dispatchEvent(session.clientId, 'message.sent', {
+    id: message.id || null,
+    to: contactJid,
+    body: message.body,
+    source,
+    hasMedia: Boolean(message.hasMedia),
+  });
   return payload;
 }
 
@@ -700,7 +737,20 @@ if (autoReplySweep.unref) autoReplySweep.unref();
 function updateSession(sessionId, patch) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  const prevStatus = session.status;
   Object.assign(session, patch, { updatedAt: new Date().toISOString() });
+  // Eventos de conexión para el webhook del cliente
+  if (patch.status && patch.status !== prevStatus) {
+    if (patch.status === 'ready') {
+      dispatchEvent(session.clientId, 'session.connected', {
+        sessionId, number: session.connectedNumber || null,
+      });
+    } else if (prevStatus === 'ready') {
+      dispatchEvent(session.clientId, 'session.disconnected', {
+        sessionId, status: patch.status,
+      });
+    }
+  }
   emitSessionUpdate(sessionId);
   persistStatus(session).catch((err) => console.error('persistStatus error:', err.message));
 }
@@ -964,6 +1014,23 @@ async function connectSocket(session) {
     }
   });
 
+  // Ticks de WhatsApp (entregado/leído) de NUESTROS mensajes → estado por id
+  // consultable por API + eventos message.delivered / message.read.
+  sock.ev.on('messages.update', (updates) => {
+    for (const u of updates || []) {
+      if (!u.key?.fromMe || !u.key.id) continue;
+      const mapped = MESSAGE_STATUS_BY_CODE[u.update?.status];
+      if (!mapped) continue;
+      const to = chatIdentity(u.key.remoteJid);
+      const entry = recordMessageStatus(session.clientId, u.key.id, mapped, to);
+      if (entry && mapped !== 'sent') {
+        dispatchEvent(session.clientId, `message.${mapped}`, {
+          id: u.key.id, to, status: mapped, at: entry.at,
+        });
+      }
+    }
+  });
+
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
     for (const msg of messages) {
@@ -1059,6 +1126,10 @@ async function connectSocket(session) {
       }, { senderName: isGroup ? contact.groupSubject : payload.message.senderName, isGroup });
 
       scopedEmit('message:incoming', session.clientId, payload);
+      dispatchEvent(session.clientId, 'message.received', {
+        message: payload.message,
+        contact,
+      });
 
       // GRUPOS: responder solo si le hablan al bot (mención/cita/palabra clave).
       // El mensaje ya está en el panel y en el buffer del chat — el bot lo
@@ -1556,6 +1627,7 @@ module.exports = {
   getChatMedia,
   sendMediaMessage,
   sendFileByUrl,
+  getMessageStatus,
   createGroup,
   joinGroupByInvite,
 };

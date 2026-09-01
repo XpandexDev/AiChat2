@@ -24,7 +24,7 @@ const openapiSpec = {
   openapi: '3.1.0',
   info: {
     title: 'AiChat API',
-    version: '1.0.0',
+    version: '1.1.0',
     description: [
       'API de la plataforma de chatbots de WhatsApp de Xpandex.',
       '',
@@ -34,6 +34,17 @@ const openapiSpec = {
       '**Autenticación**: cabecera `Authorization: Bearer xpk_…` (o `X-Api-Key`).',
       '',
       '**Límites**: 120 peticiones/minuto por key · archivos hasta 16MB · las conversaciones son un buffer reciente en memoria, no un histórico persistente.',
+      '',
+      '## Webhooks de eventos',
+      '',
+      'Configura una URL (aquí vía `PUT /events-webhook`, o en el panel → Ajustes → API) y recibirás un POST por cada evento:',
+      '`message.received` · `message.sent` · `message.delivered` · `message.read` · `handoff.started` · `handoff.resumed` · `session.connected` · `session.disconnected`.',
+      '',
+      'Cada entrega incluye `X-AiChat-Event` (tipo), `X-AiChat-Delivery` (id único) y `X-AiChat-Signature: sha256=<hex>` — HMAC-SHA256 del body con tu secret `whsec_…`. Verifícala siempre. Reintentos: 30s, 2min y 10min si tu endpoint no responde 2xx.',
+      '',
+      '## Idempotencia',
+      '',
+      'En `POST /messages` puedes enviar la cabecera `Idempotency-Key` (cualquier string único, máx. 128): los reintentos con la misma clave devuelven la respuesta original SIN reenviar el WhatsApp (ventana de 24h).',
     ].join('\n'),
   },
   servers: [{ url: 'https://aichat.xpandex.es/api/v1' }],
@@ -98,6 +109,11 @@ const openapiSpec = {
         summary: 'Enviar (o iniciar) una conversación',
         description: 'Envía texto o un archivo a un número. Puede INICIAR conversaciones (no hace falta que el contacto haya escrito antes). Las menciones `@34600111222` en el texto se convierten en menciones reales de WhatsApp.',
         tags: ['Mensajes'],
+        parameters: [{
+          name: 'Idempotency-Key', in: 'header', required: false,
+          schema: { type: 'string', maxLength: 128 },
+          description: 'Los reintentos con la misma clave no reenvían el mensaje (24h)',
+        }],
         requestBody: {
           required: true,
           content: {
@@ -146,6 +162,60 @@ const openapiSpec = {
           401: err('API key ausente o inválida'),
           409: err('La sesión de WhatsApp del cliente no está conectada'),
           429: err('Límite de peticiones alcanzado'),
+        },
+      },
+    },
+    '/messages/{id}/status': {
+      get: {
+        summary: 'Estado de entrega de un mensaje enviado',
+        description: 'Ticks de WhatsApp: sent → delivered → read. Buffer en memoria (mensajes recientes).',
+        tags: ['Mensajes'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: {
+            description: 'OK',
+            content: { 'application/json': { example: { id: '3EB0…', status: 'read', to: '34600111222@s.whatsapp.net', updatedAt: '2026-09-01T10:05:00.000Z' } } },
+          },
+          404: err('Sin estado para ese id (o expiró del buffer)'),
+          401: err('API key ausente o inválida'),
+        },
+      },
+    },
+    '/events-webhook': {
+      get: {
+        summary: 'Configuración del webhook de eventos',
+        tags: ['Eventos'],
+        responses: {
+          200: {
+            description: 'OK',
+            content: { 'application/json': { example: { url: 'https://midominio.es/aichat-events', secret: 'whsec_…' } } },
+          },
+          401: err('API key ausente o inválida'),
+        },
+      },
+      put: {
+        summary: 'Configurar el webhook de eventos',
+        description: 'URL vacía desactiva los eventos. `regenerateSecret: true` rota el secret de firma.',
+        tags: ['Eventos'],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              example: { url: 'https://midominio.es/aichat-events' },
+              schema: {
+                type: 'object',
+                properties: {
+                  url: { type: 'string' },
+                  regenerateSecret: { type: 'boolean', default: false },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'OK', content: { 'application/json': { example: { url: 'https://midominio.es/aichat-events', secret: 'whsec_…' } } } },
+          400: err('URL inválida'),
+          401: err('API key ausente o inválida'),
         },
       },
     },

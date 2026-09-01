@@ -8,7 +8,7 @@ const SELECT_FIELDS = `
   id, name, email, phone, description, is_active,
   tags, webhook_incoming_url, webhook_secret, pairing_token,
   password_hash, bot_enabled, schedule_enabled, timezone, auto_reply_text,
-  api_key_prefix, api_key_created_at,
+  api_key_prefix, api_key_created_at, events_webhook_url, events_webhook_secret,
   created_by, created_at, updated_at
 `;
 
@@ -28,6 +28,8 @@ function rowToClient(row) {
     passwordConfigured: Boolean(row.password_hash),
     apiKeyPrefix: row.api_key_prefix || null,
     apiKeyCreatedAt: row.api_key_created_at || null,
+    eventsWebhookUrl: row.events_webhook_url || null,
+    eventsWebhookSecret: row.events_webhook_secret || null,
     botEnabled: Boolean(row.bot_enabled),
     scheduleEnabled: Boolean(row.schedule_enabled),
     timezone: row.timezone,
@@ -38,26 +40,68 @@ function rowToClient(row) {
   };
 }
 
-// --- API key del cliente (API pública v1) ---
-// Devuelve la key EN CLARO una única vez; en BD solo hash + prefijo.
-async function generateApiKey(id) {
+// --- API keys del cliente (API pública v1) — varias por cliente, con nombre ---
+// La key EN CLARO solo viaja en la respuesta de creación; en BD hash + prefijo.
+async function listApiKeys(clientId) {
+  const [rows] = await pool.execute(
+    `SELECT id, name, key_prefix, last_used_at, created_at
+     FROM client_api_keys WHERE client_id = ? ORDER BY created_at DESC`,
+    [clientId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    prefix: r.key_prefix,
+    lastUsedAt: r.last_used_at,
+    createdAt: r.created_at,
+  }));
+}
+
+async function createApiKey(clientId, name) {
+  const clean = String(name || '').trim().slice(0, 80) || 'key';
   const raw = `xpk_${crypto.randomBytes(24).toString('hex')}`;
   const hash = crypto.createHash('sha256').update(raw).digest('hex');
   const prefix = raw.slice(0, 12);
   const [result] = await pool.execute(
-    'UPDATE clients SET api_key_hash = ?, api_key_prefix = ?, api_key_created_at = NOW() WHERE id = ?',
-    [hash, prefix, id],
+    'INSERT INTO client_api_keys (client_id, name, key_hash, key_prefix) VALUES (?, ?, ?, ?)',
+    [clientId, clean, hash, prefix],
   );
-  if (result.affectedRows === 0) return null;
-  return { apiKey: raw, apiKeyPrefix: prefix };
+  return { id: result.insertId, apiKey: raw, name: clean, prefix };
 }
 
-async function revokeApiKey(id) {
+async function deleteApiKey(clientId, keyId) {
   const [result] = await pool.execute(
-    'UPDATE clients SET api_key_hash = NULL, api_key_prefix = NULL, api_key_created_at = NULL WHERE id = ?',
-    [id],
+    'DELETE FROM client_api_keys WHERE id = ? AND client_id = ?',
+    [keyId, clientId],
   );
   return result.affectedRows > 0;
+}
+
+// --- Webhook de EVENTOS salientes por cliente ---
+async function getEventsWebhook(clientId) {
+  const [rows] = await pool.execute(
+    'SELECT events_webhook_url, events_webhook_secret FROM clients WHERE id = ?',
+    [clientId],
+  );
+  const r = rows[0] || null;
+  return r ? { url: r.events_webhook_url, secret: r.events_webhook_secret } : null;
+}
+
+// Fija la URL; si no hay secret aún (o regenerate=true) genera uno nuevo.
+// El secret se guarda en claro: hace falta para FIRMAR (HMAC) cada entrega.
+async function setEventsWebhook(clientId, url, regenerateSecret = false) {
+  const cleanUrl = String(url || '').trim() || null;
+  const current = await getEventsWebhook(clientId);
+  let secret = current?.secret || null;
+  if (cleanUrl && (!secret || regenerateSecret)) {
+    secret = `whsec_${crypto.randomBytes(24).toString('hex')}`;
+  }
+  if (!cleanUrl) secret = null; // quitar URL = desactivar eventos
+  await pool.execute(
+    'UPDATE clients SET events_webhook_url = ?, events_webhook_secret = ? WHERE id = ?',
+    [cleanUrl, secret, clientId],
+  );
+  return { url: cleanUrl, secret };
 }
 
 function generatePairingToken() {
@@ -246,8 +290,11 @@ function validateUrl(urlString) {
 }
 
 module.exports = {
-  generateApiKey,
-  revokeApiKey,
+  listApiKeys,
+  createApiKey,
+  deleteApiKey,
+  getEventsWebhook,
+  setEventsWebhook,
   listClients,
   getClient,
   getClientWithSecrets,
