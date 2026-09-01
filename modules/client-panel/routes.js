@@ -6,6 +6,10 @@ const blacklist = require('../blacklist/service');
 const handoff = require('../handoff/service');
 const { requireClient } = require('../../middleware/client-auth');
 const { auditLog } = require('../../middleware/audit');
+const { invalidateApiKeyCache } = require('../../middleware/api-key');
+const clientAuthService = require('../client-auth/service');
+const { CLIENT_COOKIE_NAME } = require('../../middleware/client-auth');
+const { hashToken } = require('../../lib/session-tokens');
 
 const router = express.Router();
 
@@ -28,6 +32,8 @@ router.get('/me', async (req, res) => {
         timezone: client.timezone,
         autoReplyText: client.autoReplyText,
         pairingToken: client.pairingToken,
+        apiKeyPrefix: client.apiKeyPrefix,
+        apiKeyCreatedAt: client.apiKeyCreatedAt,
       },
       sessions: (sessions || []).map((s) => ({
         sessionId: s.sessionId,
@@ -71,6 +77,49 @@ router.put('/schedule', async (req, res) => {
     }, req).catch(() => {});
     return res.json(result);
   } catch (error) {
+    if (error.code === 'VALIDATION') return res.status(400).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Ajustes: API key del propio cliente (self-service) ---
+router.post('/api-key', async (req, res) => {
+  try {
+    const result = await clientsService.generateApiKey(req.clientId);
+    if (!result) return res.status(404).json({ error: 'Cliente no encontrado' });
+    invalidateApiKeyCache();
+    auditLog(null, 'panel.api_key_generate', 'client', String(req.clientId), {}, req).catch(() => {});
+    // La key en claro SOLO viaja en esta respuesta.
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/api-key', async (req, res) => {
+  try {
+    await clientsService.revokeApiKey(req.clientId);
+    invalidateApiKeyCache();
+    auditLog(null, 'panel.api_key_revoke', 'client', String(req.clientId), {}, req).catch(() => {});
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Ajustes: cambio de contraseña por el propio cliente ---
+router.post('/password', async (req, res) => {
+  const current = String(req.body?.currentPassword || '');
+  const next = String(req.body?.newPassword || '');
+  try {
+    const keepHash = req.cookies?.[CLIENT_COOKIE_NAME]
+      ? hashToken(req.cookies[CLIENT_COOKIE_NAME])
+      : null;
+    await clientAuthService.changePassword(req.clientId, current, next, keepHash);
+    auditLog(null, 'panel.password_change', 'client', String(req.clientId), {}, req).catch(() => {});
+    return res.json({ ok: true });
+  } catch (error) {
+    if (error.code === 'INVALID_CREDENTIALS') return res.status(401).json({ error: error.message });
     if (error.code === 'VALIDATION') return res.status(400).json({ error: error.message });
     return res.status(500).json({ error: error.message });
   }

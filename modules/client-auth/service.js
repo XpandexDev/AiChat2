@@ -42,6 +42,38 @@ async function login(email, password, req) {
   return { rawToken, clientId: client.id, expiresAt: exp };
 }
 
+// Cambio de contraseña por el PROPIO cliente: exige la actual, y cierra el
+// resto de sesiones (la actual sobrevive vía keepTokenHash).
+async function changePassword(clientId, currentPassword, newPassword, keepTokenHash = null) {
+  const [rows] = await pool.execute(
+    'SELECT password_hash FROM clients WHERE id = ? AND is_active = 1',
+    [clientId],
+  );
+  const row = rows[0] || null;
+  const ok = await bcrypt.compare(currentPassword, row?.password_hash || DUMMY_HASH);
+  if (!row || !row.password_hash || !ok) {
+    const error = new Error('La contraseña actual no es correcta');
+    error.code = 'INVALID_CREDENTIALS';
+    throw error;
+  }
+  if (String(newPassword || '').length < 8) {
+    const error = new Error('La contraseña nueva debe tener al menos 8 caracteres');
+    error.code = 'VALIDATION';
+    throw error;
+  }
+  const hash = await bcrypt.hash(String(newPassword), 12);
+  await pool.execute('UPDATE clients SET password_hash = ? WHERE id = ?', [hash, clientId]);
+  if (keepTokenHash) {
+    await pool.execute(
+      'DELETE FROM client_sessions WHERE client_id = ? AND token_hash != ?',
+      [clientId, keepTokenHash],
+    );
+  } else {
+    await pool.execute('DELETE FROM client_sessions WHERE client_id = ?', [clientId]);
+  }
+  return true;
+}
+
 async function validateSession(rawToken) {
   if (!rawToken || typeof rawToken !== 'string') return null;
   const tokenHash = hashToken(rawToken);
@@ -85,6 +117,7 @@ async function cleanupExpiredSessions() {
 }
 
 module.exports = {
+  changePassword,
   login,
   validateSession,
   destroySession,
