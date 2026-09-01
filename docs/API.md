@@ -73,6 +73,49 @@ avisar a la otra parte de un contrato).
 
 Detalle completo con ejemplos de respuesta: **/api/docs**.
 
+## Webhooks de eventos
+
+Configura una URL de eventos (panel → Ajustes → API, o `PUT /v1/events-webhook`)
+y recibirás un POST por cada evento:
+
+`message.received` · `message.sent` · `message.delivered` · `message.read` ·
+`handoff.started` · `handoff.resumed` · `session.connected` · `session.disconnected`
+
+```json
+{ "id": "uuid", "type": "message.received", "clientId": 4,
+  "timestamp": "2026-09-01T10:00:00.000Z", "data": { "message": { … }, "contact": { … } } }
+```
+
+**Verifica SIEMPRE la firma** (cabecera `X-AiChat-Signature: sha256=<hex>`,
+HMAC-SHA256 del body crudo con tu secret `whsec_…`):
+
+```js
+const crypto = require('crypto');
+const expected = 'sha256=' + crypto.createHmac('sha256', SECRET).update(rawBody).digest('hex');
+const ok = crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(req.headers['x-aichat-signature'] || ''));
+```
+
+Reintentos si no respondes 2xx: a los 30s, 2min y 10min (best-effort; un
+reinicio del servicio pierde los reintentos pendientes).
+
+## Idempotencia
+
+En `POST /v1/messages`, añade `Idempotency-Key: <string único>` — los reintentos
+con la misma clave devuelven la respuesta original **sin reenviar** el WhatsApp
+(ventana 24h; la respuesta repetida lleva `Idempotent-Replay: true`).
+
+## Estado de entrega
+
+`GET /v1/messages/{id}/status` → `{ status: "sent" | "delivered" | "read" }`
+(ticks de WhatsApp; buffer en memoria de mensajes recientes). También llegan
+como eventos `message.delivered` / `message.read` al webhook.
+
+## API keys
+
+Puedes tener **varias keys con nombre** (prod, n8n, test…) y ver su último uso
+en el panel. Eliminar una key corta solo esa integración: rotación sin downtime
+creando la nueva antes de borrar la vieja.
+
 ## Límites y comportamiento
 
 - **Rate limit**: 120 peticiones/minuto por key → `429` con `Retry-After`.

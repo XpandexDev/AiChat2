@@ -2,7 +2,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { ClientPanelService, ClientMeClient } from '../../core/api/client-panel.service';
+import { ClientPanelService, ClientMeClient, PanelApiKeyInfo } from '../../core/api/client-panel.service';
 import { errorToMessage } from '../../core/api/error';
 import { RevealDirective } from '../../shared/reveal.directive';
 
@@ -24,9 +24,14 @@ export class ClientSettingsComponent implements OnInit {
   readonly error = signal<string | null>(null);
   readonly notice = signal<string | null>(null);
 
-  // --- API key ---
-  readonly newApiKey = signal<string | null>(null); // visible solo tras generar
+  // --- API keys (varias) + webhook de eventos ---
+  readonly apiKeys = signal<PanelApiKeyInfo[]>([]);
+  readonly newApiKey = signal<string | null>(null);
   readonly apiKeyBusy = signal(false);
+  newKeyName = '';
+  eventsUrl = '';
+  readonly eventsSecret = signal<string | null>(null);
+  readonly savingEvents = signal(false);
 
   // --- Contraseña ---
   currentPassword = '';
@@ -37,9 +42,25 @@ export class ClientSettingsComponent implements OnInit {
   readonly apiBase = `${window.location.origin}/api/v1`;
 
   ngOnInit() {
+    this.loadApiKeys();
+    this.loadEventsWebhook();
     this.api.me().subscribe({
       next: (r) => this.me.set(r.client),
       error: (err) => this.error.set(errorToMessage(err, 'No se pudieron cargar los ajustes')),
+    });
+  }
+
+  loadApiKeys() {
+    this.api.listApiKeys().subscribe({
+      next: (list) => this.apiKeys.set(list),
+      error: () => this.apiKeys.set([]),
+    });
+  }
+
+  loadEventsWebhook() {
+    this.api.getEventsWebhook().subscribe({
+      next: (cfg) => { this.eventsUrl = cfg.url || ''; this.eventsSecret.set(cfg.secret); },
+      error: () => {},
     });
   }
 
@@ -48,19 +69,18 @@ export class ClientSettingsComponent implements OnInit {
     return `curl ${this.apiBase}/me \\\n  -H "Authorization: Bearer ${key}"`;
   }
 
-  generateApiKey() {
-    const c = this.me();
-    if (!c) return;
-    if (c.apiKeyPrefix && !confirm('¿Generar una key NUEVA? La anterior dejará de funcionar al instante en todas tus integraciones.')) return;
+  createApiKey() {
+    const name = this.newKeyName.trim() || 'key';
     this.apiKeyBusy.set(true);
     this.error.set(null);
-    this.api.generateApiKey().subscribe({
+    this.api.createApiKey(name).subscribe({
       next: (r) => {
         this.apiKeyBusy.set(false);
         this.newApiKey.set(r.apiKey);
-        this.me.set({ ...c, apiKeyPrefix: r.apiKeyPrefix, apiKeyCreatedAt: new Date().toISOString() });
+        this.newKeyName = '';
+        this.loadApiKeys();
       },
-      error: (err) => { this.apiKeyBusy.set(false); this.error.set(errorToMessage(err, 'No se pudo generar la key')); },
+      error: (err) => { this.apiKeyBusy.set(false); this.error.set(errorToMessage(err, 'No se pudo crear la key')); },
     });
   }
 
@@ -75,19 +95,25 @@ export class ClientSettingsComponent implements OnInit {
     }
   }
 
-  revokeApiKey() {
-    const c = this.me();
-    if (!c) return;
-    if (!confirm('¿Revocar la API key? Tus integraciones dejarán de funcionar hasta que generes otra.')) return;
-    this.apiKeyBusy.set(true);
-    this.api.revokeApiKey().subscribe({
-      next: () => {
-        this.apiKeyBusy.set(false);
-        this.newApiKey.set(null);
-        this.me.set({ ...c, apiKeyPrefix: null, apiKeyCreatedAt: null });
-        this.notice.set('API key revocada');
+  deleteApiKey(k: PanelApiKeyInfo) {
+    if (!confirm(`¿Eliminar la key "${k.name}" (${k.prefix}…)? Las integraciones que la usen dejarán de funcionar.`)) return;
+    this.api.deleteApiKey(k.id).subscribe({
+      next: () => { this.loadApiKeys(); this.notice.set('Key eliminada'); },
+      error: (err) => this.error.set(errorToMessage(err, 'No se pudo eliminar')),
+    });
+  }
+
+  saveEventsWebhook(regenerate = false) {
+    this.savingEvents.set(true);
+    this.error.set(null);
+    this.api.setEventsWebhook(this.eventsUrl.trim(), regenerate).subscribe({
+      next: (cfg) => {
+        this.savingEvents.set(false);
+        this.eventsUrl = cfg.url || '';
+        this.eventsSecret.set(cfg.secret);
+        this.notice.set(cfg.url ? 'Webhook de eventos guardado' : 'Webhook de eventos desactivado');
       },
-      error: (err) => { this.apiKeyBusy.set(false); this.error.set(errorToMessage(err, 'No se pudo revocar')); },
+      error: (err) => { this.savingEvents.set(false); this.error.set(errorToMessage(err, 'No se pudo guardar')); },
     });
   }
 

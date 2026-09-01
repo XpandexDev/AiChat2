@@ -6,6 +6,24 @@ const { requireApiKey } = require('../../middleware/api-key');
 const { makeApiLimiter } = require('../../middleware/rate-limit');
 const { auditLog } = require('../../middleware/audit');
 const { openapiSpec } = require('./openapi');
+const clientsService = require('../clients/service');
+const { invalidateEventsConfig } = require('../events/dispatcher');
+
+// Idempotencia de envíos: cabecera Idempotency-Key → misma respuesta 24h (RAM).
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+const idempotencyStore = new Map(); // `${clientId}|${key}` -> { response, expiresAt }
+
+function idemGet(clientId, key) {
+  const e = idempotencyStore.get(`${clientId}|${key}`);
+  return e && e.expiresAt > Date.now() ? e.response : null;
+}
+
+function idemSet(clientId, key, response) {
+  idempotencyStore.set(`${clientId}|${key}`, { response, expiresAt: Date.now() + IDEMPOTENCY_TTL_MS });
+  if (idempotencyStore.size > 5000) {
+    idempotencyStore.delete(idempotencyStore.keys().next().value);
+  }
+}
 
 // API pública v1 — auth por API key de cliente. Cada key accede EXCLUSIVAMENTE
 // a los datos de su cliente (req.clientId lo fija el middleware).
@@ -67,6 +85,16 @@ router.post('/messages', async (req, res) => {
   const session = readySessionOf(req.clientId);
   if (!session) return fail(res, 409, 'session_not_ready', 'La sesión de WhatsApp del cliente no está conectada');
 
+  // Idempotencia: un reintento con la misma clave NO reenvía el WhatsApp.
+  const idemKey = String(req.headers['idempotency-key'] || '').slice(0, 128) || null;
+  if (idemKey) {
+    const cached = idemGet(req.clientId, idemKey);
+    if (cached) {
+      res.set('Idempotent-Replay', 'true');
+      return res.status(201).json(cached);
+    }
+  }
+
   try {
     let result;
     if (file && file.url) {
@@ -83,11 +111,48 @@ router.post('/messages', async (req, res) => {
     }
     auditLog(null, 'api.message_send', 'client', String(req.clientId),
       { to: to.split('@')[0], media: Boolean(file) }, req).catch(() => {});
-    return res.status(201).json({
+    const responseBody = {
       id: result?.message?.id || null,
       to: result?.message?.to || to,
       timestamp: result?.timestamp,
-    });
+    };
+    if (idemKey) idemSet(req.clientId, idemKey, responseBody);
+    return res.status(201).json(responseBody);
+  } catch (err) {
+    return mapError(res, err);
+  }
+});
+
+// --- Estado de un mensaje enviado (ticks de WhatsApp, RAM) ---
+router.get('/messages/:id/status', (req, res) => {
+  const st = manager.getMessageStatus(req.clientId, String(req.params.id || ''));
+  if (!st) return fail(res, 404, 'not_found', 'Sin estado para ese id (o expiró del buffer)');
+  return res.json({ id: req.params.id, status: st.status, to: st.to, updatedAt: st.at });
+});
+
+// --- Webhook de EVENTOS del cliente (configurable por API) ---
+router.get('/events-webhook', async (req, res) => {
+  try {
+    const cfg = await clientsService.getEventsWebhook(req.clientId);
+    return res.json({ url: cfg?.url || null, secret: cfg?.secret || null });
+  } catch (err) {
+    return mapError(res, err);
+  }
+});
+
+router.put('/events-webhook', async (req, res) => {
+  const url = req.body?.url != null ? String(req.body.url).trim() : '';
+  if (url && !/^https?:\/\//.test(url)) {
+    return fail(res, 400, 'validation', 'url debe ser http(s) — o vacía para desactivar los eventos');
+  }
+  try {
+    const cfg = await clientsService.setEventsWebhook(
+      req.clientId, url, req.body?.regenerateSecret === true,
+    );
+    invalidateEventsConfig(req.clientId);
+    auditLog(null, 'api.events_webhook_update', 'client', String(req.clientId),
+      { configured: Boolean(cfg.url) }, req).catch(() => {});
+    return res.json(cfg);
   } catch (err) {
     return mapError(res, err);
   }

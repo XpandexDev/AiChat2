@@ -41,6 +41,7 @@
   margin: 6px 0 0;
 }
 
+.key-create { grid-template-columns: 1fr auto; align-items: end; }
 .pass-grid { grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 720px) {
   .pass-grid { grid-template-columns: 1fr; }

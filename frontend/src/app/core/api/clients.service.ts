@@ -2,6 +2,14 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+export interface ApiKeyInfo {
+  id: number;
+  name: string;
+  prefix: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
 export interface Client {
   id: number;
   name: string;
@@ -16,6 +24,8 @@ export interface Client {
   passwordConfigured: boolean;
   apiKeyPrefix: string | null;
   apiKeyCreatedAt: string | null;
+  eventsWebhookUrl: string | null;
+  eventsWebhookSecret: string | null;
   botEnabled: boolean;
   scheduleEnabled: boolean;
   timezone: string;
@@ -77,12 +87,20 @@ export class ClientsService {
     return this.http.post<Client>(`${this.base}/${id}/pairing/regenerate`, {});
   }
 
-  generateApiKey(id: number): Observable<{ apiKey: string; apiKeyPrefix: string }> {
-    return this.http.post<{ apiKey: string; apiKeyPrefix: string }>(`${this.base}/${id}/api-key`, {});
+  listApiKeys(id: number): Observable<ApiKeyInfo[]> {
+    return this.http.get<ApiKeyInfo[]>(`${this.base}/${id}/api-keys`);
   }
 
-  revokeApiKey(id: number): Observable<{ ok: boolean }> {
-    return this.http.delete<{ ok: boolean }>(`${this.base}/${id}/api-key`);
+  createApiKey(id: number, name: string): Observable<{ id: number; apiKey: string; name: string; prefix: string }> {
+    return this.http.post<{ id: number; apiKey: string; name: string; prefix: string }>(`${this.base}/${id}/api-keys`, { name });
+  }
+
+  deleteApiKey(id: number, keyId: number): Observable<{ ok: boolean }> {
+    return this.http.delete<{ ok: boolean }>(`${this.base}/${id}/api-keys/${keyId}`);
+  }
+
+  setEventsWebhook(id: number, url: string, regenerateSecret = false): Observable<{ url: string | null; secret: string | null }> {
+    return this.http.put<{ url: string | null; secret: string | null }>(`${this.base}/${id}/events-webhook`, { url, regenerateSecret });
   }
 
   setPassword(id: number, password: string): Observable<{ ok: boolean; passwordConfigured: boolean }> {

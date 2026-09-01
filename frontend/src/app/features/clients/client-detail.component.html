@@ -369,18 +369,9 @@
       <section class="card">
         <h2>API</h2>
         <p class="muted gap-top-sm small">
-          Acceso programático a la plataforma (enviar mensajes, conversaciones, handoff, grupos…).
-          La key da acceso SOLO a los datos de este cliente.
+          Keys de acceso programático (cada una con nombre: prod, n8n, test…) y webhook de eventos.
+          Cada key da acceso SOLO a los datos de este cliente.
         </p>
-        <div class="meta gap-top-sm">
-          @if (c.apiKeyPrefix) {
-            <span class="badge ok">Key activa</span>
-            <span class="mono dim small">{{ c.apiKeyPrefix }}…</span>
-            @if (c.apiKeyCreatedAt) { <span class="dim small">desde {{ c.apiKeyCreatedAt | date: 'mediumDate' }}</span> }
-          } @else {
-            <span class="badge mute">Sin key</span>
-          }
-        </div>
 
         @if (newApiKey(); as key) {
           <div class="api-key-reveal gap-top-sm">
@@ -392,13 +383,54 @@
           </div>
         }
 
+        <div class="form-grid form-inline-2 gap-top-sm">
+          <label>
+            Nombre de la key
+            <input [(ngModel)]="newKeyName" placeholder="n8n, produccion, test…" />
+          </label>
+          <button class="primary" (click)="createApiKey()" [disabled]="apiKeyBusy()">Crear key</button>
+        </div>
+
+        @if (apiKeys().length) {
+          <table class="data gap-top">
+            <thead><tr><th>Nombre</th><th>Key</th><th>Último uso</th><th></th></tr></thead>
+            <tbody>
+              @for (k of apiKeys(); track k.id) {
+                <tr>
+                  <td><strong class="small">{{ k.name }}</strong></td>
+                  <td class="mono dim small">{{ k.prefix }}…</td>
+                  <td class="dim small">{{ k.lastUsedAt ? (k.lastUsedAt | date: 'short') : 'nunca' }}</td>
+                  <td class="right"><button class="danger" (click)="deleteApiKey(k)">Eliminar</button></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        } @else {
+          <p class="muted small gap-top-sm">Sin keys. Crea la primera para dar acceso a la API.</p>
+        }
+
+        <h3 class="block-title">Webhook de eventos</h3>
+        <p class="muted gap-top-sm small">
+          POST firmado (HMAC) a esta URL por cada evento: mensajes, handoffs, conexión.
+          Vacía = desactivado.
+        </p>
+        <div class="form-grid form-inline-2 gap-top-sm">
+          <label>
+            URL de eventos
+            <input [(ngModel)]="eventsUrl" placeholder="https://…/aichat-events" />
+          </label>
+          <button class="primary" (click)="saveEventsWebhook()" [disabled]="savingEvents()">Guardar</button>
+        </div>
+        @if (eventsSecret(); as secret) {
+          <dl class="kv gap-top-sm">
+            <dt>Secret de firma</dt>
+            <dd class="mono small">{{ secret }}
+              <button class="link" (click)="saveEventsWebhook(true)" [disabled]="savingEvents()">regenerar</button>
+            </dd>
+          </dl>
+        }
+
         <div class="form-actions left gap-top-sm">
-          <button class="primary" (click)="generateApiKey()" [disabled]="apiKeyBusy()">
-            {{ c.apiKeyPrefix ? 'Rotar key' : 'Generar key' }}
-          </button>
-          @if (c.apiKeyPrefix) {
-            <button class="danger" (click)="revokeApiKey()" [disabled]="apiKeyBusy()">Revocar</button>
-          }
           <a class="ghost btn-link" href="/api/docs" target="_blank" rel="noopener">Docs de la API</a>
         </div>
       </section>

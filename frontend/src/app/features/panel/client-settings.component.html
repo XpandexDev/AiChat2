@@ -20,16 +20,6 @@
       La key da acceso únicamente a los datos de tu cuenta.
     </p>
 
-    <div class="meta gap-top-sm">
-      @if (c.apiKeyPrefix) {
-        <span class="badge ok">Key activa</span>
-        <span class="mono dim small">{{ c.apiKeyPrefix }}…</span>
-        @if (c.apiKeyCreatedAt) { <span class="dim small">desde {{ c.apiKeyCreatedAt | date: 'mediumDate' }}</span> }
-      } @else {
-        <span class="badge mute">Sin key</span>
-      }
-    </div>
-
     @if (newApiKey(); as key) {
       <div class="key-reveal gap-top-sm">
         <p class="small"><strong>Guarda esta key ahora — no se volverá a mostrar:</strong></p>
@@ -40,14 +30,52 @@
       </div>
     }
 
-    <div class="form-actions left gap-top-sm">
-      <button class="primary" (click)="generateApiKey()" [disabled]="apiKeyBusy()">
-        {{ c.apiKeyPrefix ? 'Rotar key' : 'Generar key' }}
-      </button>
-      @if (c.apiKeyPrefix) {
-        <button class="danger" (click)="revokeApiKey()" [disabled]="apiKeyBusy()">Revocar</button>
-      }
+    <div class="form-grid key-create gap-top-sm">
+      <label>
+        Nombre de la key
+        <input [(ngModel)]="newKeyName" placeholder="n8n, producción, test…" />
+      </label>
+      <button class="primary" (click)="createApiKey()" [disabled]="apiKeyBusy()">Crear key</button>
     </div>
+
+    @if (apiKeys().length) {
+      <table class="data gap-top-sm">
+        <thead><tr><th>Nombre</th><th>Key</th><th>Último uso</th><th></th></tr></thead>
+        <tbody>
+          @for (k of apiKeys(); track k.id) {
+            <tr>
+              <td><strong class="small">{{ k.name }}</strong></td>
+              <td class="mono dim small">{{ k.prefix }}…</td>
+              <td class="dim small">{{ k.lastUsedAt ? (k.lastUsedAt | date: 'short') : 'nunca' }}</td>
+              <td class="right"><button class="danger" (click)="deleteApiKey(k)">Eliminar</button></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else {
+      <p class="muted small gap-top-sm">Sin keys todavía. Crea la primera para conectar tus herramientas.</p>
+    }
+
+    <h3 class="config-title">Webhook de eventos</h3>
+    <p class="muted gap-top-sm small">
+      Recibe un POST firmado (HMAC) por cada evento: mensajes entrantes/enviados,
+      entregas y lecturas, handoffs, conexión. Deja la URL vacía para desactivarlo.
+    </p>
+    <div class="form-grid key-create gap-top-sm">
+      <label>
+        URL de eventos
+        <input [(ngModel)]="eventsUrl" placeholder="https://…/aichat-events" />
+      </label>
+      <button class="primary" (click)="saveEventsWebhook()" [disabled]="savingEvents()">Guardar</button>
+    </div>
+    @if (eventsSecret(); as secret) {
+      <dl class="kv gap-top-sm">
+        <dt>Secret de firma</dt>
+        <dd class="mono small">{{ secret }}
+          <button class="link" (click)="saveEventsWebhook(true)" [disabled]="savingEvents()">regenerar</button>
+        </dd>
+      </dl>
+    }
 
     <h3 class="config-title">Configuración</h3>
     <dl class="kv gap-top-sm">

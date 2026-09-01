@@ -5,6 +5,7 @@ const blacklist = require('../blacklist/service');
 const { requireAdmin } = require('../../middleware/auth');
 const { auditLog } = require('../../middleware/audit');
 const { invalidateApiKeyCache } = require('../../middleware/api-key');
+const { invalidateEventsConfig } = require('../events/dispatcher');
 
 const router = express.Router();
 
@@ -87,29 +88,53 @@ router.post('/:id/password', async (req, res) => {
   }
 });
 
-// --- API key del cliente (API pública v1) ---
-router.post('/:id/api-key', async (req, res) => {
-  const id = Number(req.params.id);
+// --- API keys del cliente (varias, con nombre) ---
+router.get('/:id/api-keys', async (req, res) => {
   try {
-    const result = await clientsService.generateApiKey(id);
-    if (!result) return res.status(404).json({ error: 'Cliente no encontrado' });
-    invalidateApiKeyCache();
-    auditLog(req.adminId, 'client.api_key_generate', 'client', String(id), {}, req).catch(() => {});
-    // La key en claro SOLO viaja en esta respuesta; no se vuelve a mostrar.
-    return res.json(result);
+    return res.json(await clientsService.listApiKeys(Number(req.params.id)));
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
 });
 
-router.delete('/:id/api-key', async (req, res) => {
+router.post('/:id/api-keys', async (req, res) => {
   const id = Number(req.params.id);
   try {
-    const ok = await clientsService.revokeApiKey(id);
-    if (!ok) return res.status(404).json({ error: 'Cliente no encontrado' });
+    const result = await clientsService.createApiKey(id, req.body?.name);
     invalidateApiKeyCache();
-    auditLog(req.adminId, 'client.api_key_revoke', 'client', String(id), {}, req).catch(() => {});
+    auditLog(req.adminId, 'client.api_key_generate', 'client', String(id), { name: result.name }, req).catch(() => {});
+    // La key en claro SOLO viaja en esta respuesta; no se vuelve a mostrar.
+    return res.status(201).json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/:id/api-keys/:keyId', async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const ok = await clientsService.deleteApiKey(id, Number(req.params.keyId));
+    if (!ok) return res.status(404).json({ error: 'Key no encontrada' });
+    invalidateApiKeyCache();
+    auditLog(req.adminId, 'client.api_key_revoke', 'client', String(id), { keyId: Number(req.params.keyId) }, req).catch(() => {});
     return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Webhook de EVENTOS del cliente ---
+router.put('/:id/events-webhook', async (req, res) => {
+  const id = Number(req.params.id);
+  const url = req.body?.url != null ? String(req.body.url).trim() : '';
+  if (url && !/^https?:\/\//.test(url)) {
+    return res.status(400).json({ error: 'URL inválida (http/https) — o vacía para desactivar' });
+  }
+  try {
+    const cfg = await clientsService.setEventsWebhook(id, url, req.body?.regenerateSecret === true);
+    invalidateEventsConfig(id);
+    auditLog(req.adminId, 'client.events_webhook_update', 'client', String(id), { configured: Boolean(cfg.url) }, req).catch(() => {});
+    return res.json(cfg);
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

@@ -18,6 +18,7 @@ const ACTIONS = [
   'client.api_key_generate', 'client.api_key_revoke',
   'panel.api_key_generate', 'panel.api_key_revoke', 'panel.password_change',
   'api.message_send', 'api.handoff_start', 'api.handoff_resume', 'api.group_create', 'api.group_join',
+  'panel.events_webhook_update', 'client.events_webhook_update', 'api.events_webhook_update',
 ] as const;
 
 interface DayGroup {
@@ -141,6 +142,9 @@ export class AuditLogComponent implements OnInit {
       case 'api.handoff_resume': return `La API del cliente ${res} devolvió al bot el contacto ${this.phone(d.contactJid)}`;
       case 'api.group_create': return `La API del cliente ${res} creó el grupo "${d.subject || ''}"`;
       case 'api.group_join': return `La API del cliente ${res} unió el bot a un grupo`;
+      case 'panel.events_webhook_update': return `El cliente ${res} ${d.configured ? 'configuró' : 'desactivó'} su webhook de eventos`;
+      case 'client.events_webhook_update': return `${d.configured ? 'Configuró' : 'Desactivó'} el webhook de eventos del cliente ${res}`;
+      case 'api.events_webhook_update': return `La API del cliente ${res} ${d.configured ? 'configuró' : 'desactivó'} el webhook de eventos`;
       default: return `${e.action} ${e.resource_type || ''} ${res}`.trim();
     }
   }

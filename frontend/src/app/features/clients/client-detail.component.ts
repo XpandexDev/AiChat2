@@ -2,7 +2,7 @@ import { Component, Input, OnDestroy, OnInit, computed, inject, signal, effect }
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
-import { Client, ClientsService, BlacklistEntry } from '../../core/api/clients.service';
+import { Client, ClientsService, BlacklistEntry, ApiKeyInfo } from '../../core/api/clients.service';
 import { SessionsService, WaSession } from '../../core/api/sessions.service';
 import { WebhooksService } from '../../core/api/webhooks.service';
 import { ChatService, Conversation } from '../../core/api/chat.service';
@@ -138,23 +138,34 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
   newSessionId = '';
   newSessionMode: 'normal' | 'business' = 'normal';
 
-  // --- API key (API pública v1) ---
-  readonly newApiKey = signal<string | null>(null); // solo visible tras generarla
+  // --- API keys (varias por cliente) + webhook de eventos ---
+  readonly apiKeys = signal<ApiKeyInfo[]>([]);
+  readonly newApiKey = signal<string | null>(null); // solo visible tras crear
   readonly apiKeyBusy = signal(false);
+  newKeyName = '';
+  eventsUrl = '';
+  readonly eventsSecret = signal<string | null>(null);
+  readonly savingEvents = signal(false);
 
-  generateApiKey() {
-    const c = this.client();
-    if (!c) return;
-    if (c.apiKeyPrefix && !confirm('¿Generar una key NUEVA? La anterior dejará de funcionar al instante.')) return;
+  loadApiKeys() {
+    this.clientsApi.listApiKeys(Number(this.id)).subscribe({
+      next: (list) => this.apiKeys.set(list),
+      error: () => this.apiKeys.set([]),
+    });
+  }
+
+  createApiKey() {
+    const name = this.newKeyName.trim() || 'key';
     this.apiKeyBusy.set(true);
     this.error.set(null);
-    this.clientsApi.generateApiKey(c.id).subscribe({
+    this.clientsApi.createApiKey(Number(this.id), name).subscribe({
       next: (r) => {
         this.apiKeyBusy.set(false);
         this.newApiKey.set(r.apiKey);
-        this.client.set({ ...c, apiKeyPrefix: r.apiKeyPrefix, apiKeyCreatedAt: new Date().toISOString() });
+        this.newKeyName = '';
+        this.loadApiKeys();
       },
-      error: (err) => { this.apiKeyBusy.set(false); this.error.set(errorToMessage(err, 'No se pudo generar la key')); },
+      error: (err) => { this.apiKeyBusy.set(false); this.error.set(errorToMessage(err, 'No se pudo crear la key')); },
     });
   }
 
@@ -169,19 +180,25 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
     }
   }
 
-  revokeApiKey() {
-    const c = this.client();
-    if (!c) return;
-    if (!confirm('¿Revocar la API key? Las integraciones que la usen dejarán de funcionar.')) return;
-    this.apiKeyBusy.set(true);
-    this.clientsApi.revokeApiKey(c.id).subscribe({
-      next: () => {
-        this.apiKeyBusy.set(false);
-        this.newApiKey.set(null);
-        this.client.set({ ...c, apiKeyPrefix: null, apiKeyCreatedAt: null });
-        this.notice.set('API key revocada');
+  deleteApiKey(k: ApiKeyInfo) {
+    if (!confirm(`¿Eliminar la key "${k.name}" (${k.prefix}…)? Las integraciones que la usen dejarán de funcionar.`)) return;
+    this.clientsApi.deleteApiKey(Number(this.id), k.id).subscribe({
+      next: () => { this.loadApiKeys(); this.notice.set('Key eliminada'); },
+      error: (err) => this.error.set(errorToMessage(err, 'No se pudo eliminar')),
+    });
+  }
+
+  saveEventsWebhook(regenerate = false) {
+    this.savingEvents.set(true);
+    this.error.set(null);
+    this.clientsApi.setEventsWebhook(Number(this.id), this.eventsUrl.trim(), regenerate).subscribe({
+      next: (cfg) => {
+        this.savingEvents.set(false);
+        this.eventsUrl = cfg.url || '';
+        this.eventsSecret.set(cfg.secret);
+        this.notice.set(cfg.url ? 'Webhook de eventos guardado' : 'Webhook de eventos desactivado');
       },
-      error: (err) => { this.apiKeyBusy.set(false); this.error.set(errorToMessage(err, 'No se pudo revocar')); },
+      error: (err) => { this.savingEvents.set(false); this.error.set(errorToMessage(err, 'No se pudo guardar')); },
     });
   }
 
@@ -323,6 +340,7 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
   ngOnInit() {
     if (!this.id) return;
     this.load();
+    this.loadApiKeys();
     this.chat.hydrate();
   }
 
@@ -333,7 +351,12 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
     const id = Number(this.id);
     this.loading.set(true);
     this.clientsApi.get(id).subscribe({
-      next: (c) => { this.client.set(c); this.loading.set(false); },
+      next: (c) => {
+        this.client.set(c);
+        this.loading.set(false);
+        this.eventsUrl = c.eventsWebhookUrl || '';
+        this.eventsSecret.set(c.eventsWebhookSecret);
+      },
       error: (err) => { this.error.set(errorToMessage(err, 'No se pudo cargar el cliente')); this.loading.set(false); },
     });
     this.clientsApi.sessions(id).subscribe({

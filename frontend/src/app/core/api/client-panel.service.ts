@@ -2,6 +2,14 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+export interface PanelApiKeyInfo {
+  id: number;
+  name: string;
+  prefix: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
 export interface BlacklistEntry {
   contactJid: string;
   note: string | null;
@@ -103,12 +111,24 @@ export class ClientPanelService {
   }
 
   // --- Ajustes ---
-  generateApiKey(): Observable<{ apiKey: string; apiKeyPrefix: string }> {
-    return this.http.post<{ apiKey: string; apiKeyPrefix: string }>(`${this.base}/api-key`, {});
+  listApiKeys(): Observable<PanelApiKeyInfo[]> {
+    return this.http.get<PanelApiKeyInfo[]>(`${this.base}/api-keys`);
   }
 
-  revokeApiKey(): Observable<{ ok: boolean }> {
-    return this.http.delete<{ ok: boolean }>(`${this.base}/api-key`);
+  createApiKey(name: string): Observable<{ id: number; apiKey: string; name: string; prefix: string }> {
+    return this.http.post<{ id: number; apiKey: string; name: string; prefix: string }>(`${this.base}/api-keys`, { name });
+  }
+
+  deleteApiKey(keyId: number): Observable<{ ok: boolean }> {
+    return this.http.delete<{ ok: boolean }>(`${this.base}/api-keys/${keyId}`);
+  }
+
+  getEventsWebhook(): Observable<{ url: string | null; secret: string | null }> {
+    return this.http.get<{ url: string | null; secret: string | null }>(`${this.base}/events-webhook`);
+  }
+
+  setEventsWebhook(url: string, regenerateSecret = false): Observable<{ url: string | null; secret: string | null }> {
+    return this.http.put<{ url: string | null; secret: string | null }>(`${this.base}/events-webhook`, { url, regenerateSecret });
   }
 
   changePassword(currentPassword: string, newPassword: string): Observable<{ ok: boolean }> {
