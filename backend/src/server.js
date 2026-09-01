@@ -23,6 +23,7 @@ const pairingRoutes = require('./modules/pairing/routes');
 const clientAuthRoutes = require('./modules/client-auth/routes');
 const clientPanelRoutes = require('./modules/client-panel/routes');
 const statsRoutes = require('./modules/stats/routes');
+const apiV1Routes = require('./modules/api-v1/routes');
 
 console.log('Iniciando app Node...');
 
@@ -110,6 +111,24 @@ app.use('/api/stats', statsRoutes);
 // genérico (/api/client), y ambos antes del catch-all del SPA.
 app.use('/api/client/auth', clientAuthRoutes);
 app.use('/api/client', clientPanelRoutes);
+
+// --- API pública v1 (API key por cliente, sin cookies) + docs interactivas ---
+app.use('/api/v1', apiV1Routes);
+app.get('/api/docs', (_req, res) => {
+  res.type('html').send(`<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AiChat API · Docs</title>
+</head>
+<body>
+  <noscript><a href="/api/v1/openapi.json">Ver especificación OpenAPI (JSON)</a></noscript>
+  <script id="api-reference" data-url="/api/v1/openapi.json"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>`);
+});
 
 sessionsManager.init(io);
 

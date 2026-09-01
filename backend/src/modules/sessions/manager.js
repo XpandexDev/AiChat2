@@ -211,7 +211,7 @@ async function getChatMedia(clientId, msgId) {
 }
 
 // Envío de un adjunto desde el panel (composer): base64 → documento/imagen/audio/vídeo.
-async function sendMediaMessage(sessionId, to, { dataBase64, mimetype, fileName, caption }) {
+async function sendMediaMessage(sessionId, to, { dataBase64, mimetype, fileName, caption }, source = 'chatbot') {
   const session = requireReadySession(sessionId);
   const jid = normalizeJid(to);
   if (!jid) throw new Error('Destino inválido');
@@ -240,13 +240,45 @@ async function sendMediaMessage(sessionId, to, { dataBase64, mimetype, fileName,
   const msgId = sent?.key?.id || null;
   if (msgId) rememberMedia(session.clientId, msgId, { buffer, mimetype: mime, fileName: fileName || null });
 
-  return emitOutgoing(session, 'chatbot', {
+  return emitOutgoing(session, source, {
     id: msgId,
     to: jid,
     body: caption || `📎 ${fileName || 'archivo'}`,
     hasMedia: true,
     msgType,
     fileName: fileName || null,
+  });
+}
+
+// Envía un archivo desde una URL como documento nativo (API v1). Reusa la
+// validación por Content-Type real y los límites de los adjuntos automáticos:
+// una página web o un tipo no permitido devuelven error, nunca se envían.
+async function sendFileByUrl(sessionId, to, url, { fileName, caption } = {}, source = 'chatbot') {
+  const session = requireReadySession(sessionId);
+  const jid = normalizeJid(to);
+  if (!jid) {
+    const e = new Error('Destino inválido'); e.code = 'VALIDATION'; throw e;
+  }
+  const file = await downloadAttachment(url);
+  if (!file) {
+    const e = new Error('La URL no apunta a un archivo descargable de tipo permitido');
+    e.code = 'VALIDATION';
+    throw e;
+  }
+  const name = fileName || file.fileName;
+  const sent = await session.sock.sendMessage(jid, {
+    document: file.buffer,
+    mimetype: file.mimetype,
+    fileName: name,
+    caption: caption || undefined,
+  });
+  const msgId = sent?.key?.id || null;
+  if (msgId) {
+    rememberMedia(session.clientId, msgId, { buffer: file.buffer, mimetype: file.mimetype, fileName: name });
+  }
+  return emitOutgoing(session, source, {
+    id: msgId, to: jid, body: caption || `📎 ${name}`,
+    hasMedia: true, msgType: 'documentMessage', fileName: name,
   });
 }
 
@@ -1350,7 +1382,7 @@ async function dropSessionsForClient(clientId) {
   return count;
 }
 
-async function sendMessage(sessionId, to, text) {
+async function sendMessage(sessionId, to, text, source = 'chatbot') {
   const session = sessions.get(sessionId);
   if (!session || !session.sock) {
     throw new Error(`La sesión ${sessionId} no existe o no está inicializada.`);
@@ -1367,7 +1399,7 @@ async function sendMessage(sessionId, to, text) {
 
   const sent = await session.sock.sendMessage(jid, withMentions(String(text)));
 
-  return emitOutgoing(session, 'chatbot', {
+  return emitOutgoing(session, source, {
     id: sent?.key?.id || null,
     to: jid,
     body: text,
@@ -1523,6 +1555,7 @@ module.exports = {
   getContactProfile,
   getChatMedia,
   sendMediaMessage,
+  sendFileByUrl,
   createGroup,
   joinGroupByInvite,
 };

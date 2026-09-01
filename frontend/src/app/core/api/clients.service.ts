@@ -14,6 +14,8 @@ export interface Client {
   webhookSecretConfigured: boolean;
   pairingToken: string | null;
   passwordConfigured: boolean;
+  apiKeyPrefix: string | null;
+  apiKeyCreatedAt: string | null;
   botEnabled: boolean;
   scheduleEnabled: boolean;
   timezone: string;
@@ -73,6 +75,14 @@ export class ClientsService {
 
   regeneratePairing(id: number): Observable<Client> {
     return this.http.post<Client>(`${this.base}/${id}/pairing/regenerate`, {});
+  }
+
+  generateApiKey(id: number): Observable<{ apiKey: string; apiKeyPrefix: string }> {
+    return this.http.post<{ apiKey: string; apiKeyPrefix: string }>(`${this.base}/${id}/api-key`, {});
+  }
+
+  revokeApiKey(id: number): Observable<{ ok: boolean }> {
+    return this.http.delete<{ ok: boolean }>(`${this.base}/${id}/api-key`);
   }
 
   setPassword(id: number, password: string): Observable<{ ok: boolean; passwordConfigured: boolean }> {

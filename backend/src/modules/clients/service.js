@@ -8,6 +8,7 @@ const SELECT_FIELDS = `
   id, name, email, phone, description, is_active,
   tags, webhook_incoming_url, webhook_secret, pairing_token,
   password_hash, bot_enabled, schedule_enabled, timezone, auto_reply_text,
+  api_key_prefix, api_key_created_at,
   created_by, created_at, updated_at
 `;
 
@@ -25,6 +26,8 @@ function rowToClient(row) {
     webhookSecretConfigured: Boolean(row.webhook_secret),
     pairingToken: row.pairing_token,
     passwordConfigured: Boolean(row.password_hash),
+    apiKeyPrefix: row.api_key_prefix || null,
+    apiKeyCreatedAt: row.api_key_created_at || null,
     botEnabled: Boolean(row.bot_enabled),
     scheduleEnabled: Boolean(row.schedule_enabled),
     timezone: row.timezone,
@@ -33,6 +36,28 @@ function rowToClient(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+// --- API key del cliente (API pública v1) ---
+// Devuelve la key EN CLARO una única vez; en BD solo hash + prefijo.
+async function generateApiKey(id) {
+  const raw = `xpk_${crypto.randomBytes(24).toString('hex')}`;
+  const hash = crypto.createHash('sha256').update(raw).digest('hex');
+  const prefix = raw.slice(0, 12);
+  const [result] = await pool.execute(
+    'UPDATE clients SET api_key_hash = ?, api_key_prefix = ?, api_key_created_at = NOW() WHERE id = ?',
+    [hash, prefix, id],
+  );
+  if (result.affectedRows === 0) return null;
+  return { apiKey: raw, apiKeyPrefix: prefix };
+}
+
+async function revokeApiKey(id) {
+  const [result] = await pool.execute(
+    'UPDATE clients SET api_key_hash = NULL, api_key_prefix = NULL, api_key_created_at = NULL WHERE id = ?',
+    [id],
+  );
+  return result.affectedRows > 0;
 }
 
 function generatePairingToken() {
@@ -221,6 +246,8 @@ function validateUrl(urlString) {
 }
 
 module.exports = {
+  generateApiKey,
+  revokeApiKey,
   listClients,
   getClient,
   getClientWithSecrets,

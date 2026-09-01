@@ -138,6 +138,53 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
   newSessionId = '';
   newSessionMode: 'normal' | 'business' = 'normal';
 
+  // --- API key (API pública v1) ---
+  readonly newApiKey = signal<string | null>(null); // solo visible tras generarla
+  readonly apiKeyBusy = signal(false);
+
+  generateApiKey() {
+    const c = this.client();
+    if (!c) return;
+    if (c.apiKeyPrefix && !confirm('¿Generar una key NUEVA? La anterior dejará de funcionar al instante.')) return;
+    this.apiKeyBusy.set(true);
+    this.error.set(null);
+    this.clientsApi.generateApiKey(c.id).subscribe({
+      next: (r) => {
+        this.apiKeyBusy.set(false);
+        this.newApiKey.set(r.apiKey);
+        this.client.set({ ...c, apiKeyPrefix: r.apiKeyPrefix, apiKeyCreatedAt: new Date().toISOString() });
+      },
+      error: (err) => { this.apiKeyBusy.set(false); this.error.set(errorToMessage(err, 'No se pudo generar la key')); },
+    });
+  }
+
+  async copyApiKey() {
+    const key = this.newApiKey();
+    if (!key) return;
+    try {
+      await navigator.clipboard.writeText(key);
+      this.notice.set('API key copiada al portapapeles');
+    } catch {
+      this.error.set('No se pudo copiar — selecciona y copia manualmente.');
+    }
+  }
+
+  revokeApiKey() {
+    const c = this.client();
+    if (!c) return;
+    if (!confirm('¿Revocar la API key? Las integraciones que la usen dejarán de funcionar.')) return;
+    this.apiKeyBusy.set(true);
+    this.clientsApi.revokeApiKey(c.id).subscribe({
+      next: () => {
+        this.apiKeyBusy.set(false);
+        this.newApiKey.set(null);
+        this.client.set({ ...c, apiKeyPrefix: null, apiKeyCreatedAt: null });
+        this.notice.set('API key revocada');
+      },
+      error: (err) => { this.apiKeyBusy.set(false); this.error.set(errorToMessage(err, 'No se pudo revocar')); },
+    });
+  }
+
   // --- Grupos (crear / unirse por invitación) ---
   newGroupSubject = '';
   newGroupParticipants = '';

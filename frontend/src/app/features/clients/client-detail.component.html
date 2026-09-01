@@ -344,6 +344,7 @@
 
     <!-- ==================== INTEGRACIÓN ==================== -->
     @case ('integracion') {
+      <div class="detail-grid">
       <section class="card">
         <h2>Webhook (n8n)</h2>
         <p class="muted gap-top-sm small">
@@ -364,6 +365,44 @@
           <a class="ghost btn-link" [routerLink]="['/clients', c.id, 'edit']">Editar URL / secret</a>
         </div>
       </section>
+
+      <section class="card">
+        <h2>API</h2>
+        <p class="muted gap-top-sm small">
+          Acceso programático a la plataforma (enviar mensajes, conversaciones, handoff, grupos…).
+          La key da acceso SOLO a los datos de este cliente.
+        </p>
+        <div class="meta gap-top-sm">
+          @if (c.apiKeyPrefix) {
+            <span class="badge ok">Key activa</span>
+            <span class="mono dim small">{{ c.apiKeyPrefix }}…</span>
+            @if (c.apiKeyCreatedAt) { <span class="dim small">desde {{ c.apiKeyCreatedAt | date: 'mediumDate' }}</span> }
+          } @else {
+            <span class="badge mute">Sin key</span>
+          }
+        </div>
+
+        @if (newApiKey(); as key) {
+          <div class="api-key-reveal gap-top-sm">
+            <p class="small"><strong>Guarda esta key ahora — no se volverá a mostrar:</strong></p>
+            <div class="pairing-url">
+              <input readonly [value]="key" class="mono" />
+              <button class="ghost" (click)="copyApiKey()">Copiar</button>
+            </div>
+          </div>
+        }
+
+        <div class="form-actions left gap-top-sm">
+          <button class="primary" (click)="generateApiKey()" [disabled]="apiKeyBusy()">
+            {{ c.apiKeyPrefix ? 'Rotar key' : 'Generar key' }}
+          </button>
+          @if (c.apiKeyPrefix) {
+            <button class="danger" (click)="revokeApiKey()" [disabled]="apiKeyBusy()">Revocar</button>
+          }
+          <a class="ghost btn-link" href="/api/docs" target="_blank" rel="noopener">Docs de la API</a>
+        </div>
+      </section>
+      </div>
     }
   }
 }

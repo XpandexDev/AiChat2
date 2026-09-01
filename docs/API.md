@@ -1,0 +1,111 @@
+# AiChat API v1 — Guía de inicio rápido
+
+API REST de la plataforma de chatbots de WhatsApp. Cada **API key** pertenece a un
+cliente y accede **solo a sus datos**.
+
+- **Base URL**: `https://aichat.xpandex.es/api/v1`
+- **Docs interactivas** (probar llamadas desde el navegador): `https://aichat.xpandex.es/api/docs`
+- **Especificación OpenAPI**: `https://aichat.xpandex.es/api/v1/openapi.json`
+
+## Autenticación
+
+La key se genera desde el panel de administración (ficha del cliente → pestaña
+**Integración** → "Generar key") y **se muestra una sola vez**. Envíala en cada
+petición:
+
+```
+Authorization: Bearer xpk_xxxxxxxxxxxxxxxx
+```
+
+(También se acepta la cabecera `X-Api-Key`.)
+
+## Tu primer mensaje en 3 pasos
+
+```bash
+# 1) Comprueba tu conexión
+curl https://aichat.xpandex.es/api/v1/me \
+  -H "Authorization: Bearer $XPK"
+
+# 2) Envía un texto (puede INICIAR la conversación — el contacto no necesita
+#    haber escrito antes). '@34600...' en el texto = mención real en grupos.
+curl -X POST https://aichat.xpandex.es/api/v1/messages \
+  -H "Authorization: Bearer $XPK" -H "Content-Type: application/json" \
+  -d '{"to": "34600111222", "text": "Hola, te escribimos por tu pedido."}'
+
+# 3) Envía un archivo por URL (la app valida que sea un archivo real: PDF,
+#    imagen, Office, CSV, ZIP — nunca adjunta una página web)
+curl -X POST https://aichat.xpandex.es/api/v1/messages \
+  -H "Authorization: Bearer $XPK" -H "Content-Type: application/json" \
+  -d '{"to": "34600111222", "file": {"url": "https://midominio.es/factura.pdf", "fileName": "Factura.pdf"}}'
+```
+
+## Desde n8n (nodo HTTP Request)
+
+El caso típico: un workflow necesita **escribir primero** a alguien (p. ej.
+avisar a la otra parte de un contrato).
+
+- **Method**: POST · **URL**: `https://aichat.xpandex.es/api/v1/messages`
+- **Authentication**: Generic Credential → Header Auth → Name `Authorization`,
+  Value `Bearer xpk_…` (guárdala como credencial, no en el nodo)
+- **Body** (JSON):
+  ```json
+  {
+    "to": "={{ $json.telefono_b }}",
+    "text": "Hola, {{ $json.nombre_a }} ha iniciado un contrato contigo. Rellena tus datos aquí:\n\n{{ $json.enlace_b }}"
+  }
+  ```
+
+## Endpoints
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/me` | Identidad + estado de la conexión WhatsApp |
+| POST | `/messages` | Enviar texto o archivo (URL o base64); inicia conversaciones |
+| GET | `/conversations` | Conversaciones recientes |
+| GET | `/conversations/{jid}/messages` | Hilo reciente con un contacto |
+| GET | `/contacts/{jid}` | Perfil: nombre, foto, "info", empresa |
+| GET | `/handoff` | Contactos en atención humana |
+| POST | `/handoff` | Pausar el bot para un contacto (`{contactJid, motivo?, resumen?}`) |
+| POST | `/handoff/resume` | Devolver el contacto al bot |
+| POST | `/groups` | Crear grupo (`{subject, participants[]}`) |
+| POST | `/groups/join` | Unirse por enlace de invitación |
+| GET | `/stats/daily?days=14` | Mensajes por día (contadores) |
+
+Detalle completo con ejemplos de respuesta: **/api/docs**.
+
+## Límites y comportamiento
+
+- **Rate limit**: 120 peticiones/minuto por key → `429` con `Retry-After`.
+- **Archivos**: hasta 16MB. Por URL solo tipos permitidos verificados por
+  Content-Type real (PDF, JPG/PNG/WebP, DOC/DOCX, XLS/XLSX, CSV, ZIP).
+- **Conversaciones**: son un buffer reciente en memoria (~50 mensajes por
+  conversación). **No es un histórico persistente** — un reinicio del servicio
+  lo vacía. Si tu integración necesita histórico, guárdalo en tu lado.
+- **Sesión**: si el WhatsApp del cliente no está vinculado/conectado, los envíos
+  devuelven `409 session_not_ready`.
+- Los envíos por API aparecen en el panel del chat etiquetados como **API** y
+  quedan auditados.
+
+## Errores
+
+Formato uniforme:
+
+```json
+{ "error": { "code": "validation", "message": "to es requerido" } }
+```
+
+| HTTP | code | Cuándo |
+|---|---|---|
+| 400 | `validation` | Falta un campo o es inválido (también URL de archivo no permitida) |
+| 401 | `unauthorized` | Key ausente, inválida o revocada |
+| 404 | `not_found` | Recurso inexistente (p. ej. conversación fuera del buffer) |
+| 409 | `session_not_ready` | El WhatsApp del cliente no está conectado |
+| 429 | `rate_limited` | Límite de peticiones alcanzado |
+| 500 | `internal` | Error del servidor |
+
+## Seguridad
+
+- Trata la key como una contraseña: solo en servidores/credenciales, nunca en
+  frontend ni repositorios.
+- Rotación: generar una key nueva invalida la anterior al instante. Revocar
+  deja al cliente sin acceso API.

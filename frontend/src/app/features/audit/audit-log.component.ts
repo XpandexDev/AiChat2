@@ -15,6 +15,8 @@ const ACTIONS = [
   'handoff.resume', 'message.send', 'webhook.test',
   'panel.login', 'panel.logout', 'panel.bot_toggle', 'panel.schedule_update',
   'panel.blacklist_add', 'panel.blacklist_remove', 'panel.handoff_resume', 'panel.reply_send',
+  'client.api_key_generate', 'client.api_key_revoke',
+  'api.message_send', 'api.handoff_start', 'api.handoff_resume', 'api.group_create', 'api.group_join',
 ] as const;
 
 interface DayGroup {
@@ -128,6 +130,13 @@ export class AuditLogComponent implements OnInit {
       case 'panel.blacklist_remove': return `El cliente ${res} reactivó el número ${d.number || ''}`;
       case 'panel.handoff_resume': return `El cliente ${res} devolvió al bot el contacto ${this.phone(d.contactJid)}`;
       case 'panel.reply_send': return `El cliente ${res} respondió a ${this.phone(d.to)}${d.length ? ` (${d.length} caracteres)` : ''}`;
+      case 'client.api_key_generate': return `Generó/rotó la API key del cliente ${res}`;
+      case 'client.api_key_revoke': return `Revocó la API key del cliente ${res}`;
+      case 'api.message_send': return `La API del cliente ${res} envió un mensaje a ${this.phone(d.to)}${d.media ? ' (con archivo)' : ''}`;
+      case 'api.handoff_start': return `La API del cliente ${res} pausó el bot para ${this.phone(d.contactJid)}`;
+      case 'api.handoff_resume': return `La API del cliente ${res} devolvió al bot el contacto ${this.phone(d.contactJid)}`;
+      case 'api.group_create': return `La API del cliente ${res} creó el grupo "${d.subject || ''}"`;
+      case 'api.group_join': return `La API del cliente ${res} unió el bot a un grupo`;
       default: return `${e.action} ${e.resource_type || ''} ${res}`.trim();
     }
   }
@@ -146,6 +155,7 @@ export class AuditLogComponent implements OnInit {
     if (action.startsWith('session.')) return 'session';
     if (action.startsWith('group.')) return 'session';
     if (action.startsWith('panel.')) return 'panel';
+    if (action.startsWith('api.')) return 'webhook';
     if (action.startsWith('handoff.')) return 'handoff';
     if (action.startsWith('message.')) return 'message';
     if (action.startsWith('webhook.')) return 'webhook';
@@ -155,6 +165,7 @@ export class AuditLogComponent implements OnInit {
   /** Quién realizó la acción (los panel.* los hace el propio cliente, sin admin). */
   actor(e: AuditLogEntry): string {
     if (e.action?.startsWith('panel.')) return 'cliente (panel)';
+    if (e.action?.startsWith('api.')) return 'API';
     return e.admin_id ? `admin #${e.admin_id}` : '—';
   }
 

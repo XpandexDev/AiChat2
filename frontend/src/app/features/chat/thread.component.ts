@@ -98,6 +98,7 @@ export class ThreadComponent implements AfterViewChecked {
       case 'auto-reply': return 'aviso automático';
       case 'form-link': return 'formulario';
       case 'file-attachment': return 'adjunto';
+      case 'api': return 'API';
       case 'chatbot': return 'manual';
       default: return source || '';
     }
