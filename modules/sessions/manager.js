@@ -21,8 +21,23 @@ let io = null;
 function init(socketIo) {
   io = socketIo;
   io.on('connection', (socket) => {
-    socket.emit('sessions:init', listSessions());
+    // El middleware de auth (server.js) ya validó la sesión y fijó socket.data.
+    if (socket.data.role === 'admin') {
+      socket.join('admins');
+      socket.emit('sessions:init', listSessions());
+    } else if (socket.data.role === 'client') {
+      socket.join(`client:${socket.data.clientId}`);
+      socket.emit('sessions:init', listSessions().filter((s) => s.clientId === socket.data.clientId));
+    }
   });
+}
+
+// Emisión con alcance: los admins lo ven todo; un cliente solo su sala.
+function scopedEmit(event, clientId, data) {
+  if (!io) return;
+  let op = io.to('admins');
+  if (clientId) op = op.to(`client:${clientId}`);
+  op.emit(event, data);
 }
 
 function serializeSession(session) {
@@ -41,13 +56,14 @@ function serializeSession(session) {
 function emitSessionUpdate(sessionId) {
   const session = sessions.get(sessionId);
   if (!session || !io) return;
-  io.emit('session:update', serializeSession(session));
+  scopedEmit('session:update', session.clientId, serializeSession(session));
 }
 
 // Emite un evento socket genérico al panel (usado por el handoff desde routes,
 // para no acoplar las rutas a la instancia de socket.io que vive aquí).
+// Si el payload lleva clientId, también llega a la sala de ese cliente.
 function emit(event, data) {
-  if (io) io.emit(event, data);
+  scopedEmit(event, data?.clientId ?? null, data);
 }
 
 // --- Chat en vivo: ring buffer de mensajes EN RAM (sin BD, por decisión de
@@ -118,6 +134,120 @@ function getRecentConversations(clientId = null) {
   }
   result.sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
   return result;
+}
+
+// --- Métricas: contadores diarios (solo números, nunca contenido) ---
+function bumpDailyStat(clientId, direction) {
+  if (!clientId) return;
+  const col = direction === 'in' ? 'msgs_in' : 'msgs_out';
+  pool.execute(
+    `INSERT INTO daily_stats (client_id, day, ${col}) VALUES (?, CURDATE(), 1)
+     ON DUPLICATE KEY UPDATE ${col} = ${col} + 1`,
+    [clientId],
+  ).catch(() => {}); // best-effort: una métrica nunca frena un mensaje
+}
+
+// --- Medios del chat: descarga bajo demanda (RAM, sin persistir) ---
+// Para mensajes entrantes con media guardamos el WAMessage (solo el proto con
+// las claves de descifrado — el archivo vive en los servidores de WhatsApp) y
+// descargamos cuando el panel lo pide. Para salientes guardamos el buffer.
+const MEDIA_STORE_MAX = 300;
+const mediaStore = new Map(); // `${clientId}|${msgId}` -> {msg, sessionId} | {buffer, mimetype, fileName}
+const mediaBytesCache = new Map(); // mismo key -> {buffer, mimetype, fileName} (últimas descargas)
+
+function mediaKey(clientId, msgId) { return `${clientId}|${msgId}`; }
+
+function rememberMedia(clientId, msgId, value) {
+  if (!clientId || !msgId) return;
+  mediaStore.set(mediaKey(clientId, msgId), value);
+  if (mediaStore.size > MEDIA_STORE_MAX) {
+    mediaStore.delete(mediaStore.keys().next().value);
+  }
+}
+
+function mediaMetaFromMessage(message) {
+  const m = message || {};
+  const media = m.imageMessage || m.videoMessage || m.audioMessage
+    || m.documentMessage || m.stickerMessage;
+  if (!media) return null;
+  return {
+    mimetype: media.mimetype || 'application/octet-stream',
+    fileName: m.documentMessage?.fileName || null,
+  };
+}
+
+async function getChatMedia(clientId, msgId) {
+  const key = mediaKey(clientId, msgId);
+  const cached = mediaBytesCache.get(key);
+  if (cached) return cached;
+
+  const entry = mediaStore.get(key);
+  if (!entry) return null;
+
+  let result = null;
+  if (entry.buffer) {
+    result = { buffer: entry.buffer, mimetype: entry.mimetype, fileName: entry.fileName };
+  } else if (entry.msg) {
+    const { downloadMediaMessage } = await baileysPromise;
+    const session = sessions.get(entry.sessionId);
+    const buffer = await downloadMediaMessage(entry.msg, 'buffer', {}, {
+      logger: baileysLogger,
+      reuploadRequest: session?.sock ? session.sock.updateMediaMessage : undefined,
+    });
+    const meta = mediaMetaFromMessage(entry.msg.message) || {};
+    result = {
+      buffer,
+      mimetype: meta.mimetype || 'application/octet-stream',
+      fileName: meta.fileName,
+    };
+  }
+  if (result) {
+    mediaBytesCache.set(key, result);
+    if (mediaBytesCache.size > 20) {
+      mediaBytesCache.delete(mediaBytesCache.keys().next().value);
+    }
+  }
+  return result;
+}
+
+// Envío de un adjunto desde el panel (composer): base64 → documento/imagen/audio/vídeo.
+async function sendMediaMessage(sessionId, to, { dataBase64, mimetype, fileName, caption }) {
+  const session = requireReadySession(sessionId);
+  const jid = normalizeJid(to);
+  if (!jid) throw new Error('Destino inválido');
+  const buffer = Buffer.from(String(dataBase64 || ''), 'base64');
+  if (!buffer.length) throw new Error('Archivo vacío');
+  if (buffer.length > 16 * 1024 * 1024) throw new Error('Archivo demasiado grande (máx. 16MB)');
+
+  const mime = String(mimetype || 'application/octet-stream');
+  let content;
+  let msgType;
+  if (mime.startsWith('image/') && mime !== 'image/webp') {
+    content = { image: buffer, mimetype: mime, caption: caption || undefined };
+    msgType = 'imageMessage';
+  } else if (mime.startsWith('video/')) {
+    content = { video: buffer, mimetype: mime, caption: caption || undefined };
+    msgType = 'videoMessage';
+  } else if (mime.startsWith('audio/')) {
+    content = { audio: buffer, mimetype: mime };
+    msgType = 'audioMessage';
+  } else {
+    content = { document: buffer, mimetype: mime, fileName: fileName || 'archivo' };
+    msgType = 'documentMessage';
+  }
+
+  const sent = await session.sock.sendMessage(jid, content);
+  const msgId = sent?.key?.id || null;
+  if (msgId) rememberMedia(session.clientId, msgId, { buffer, mimetype: mime, fileName: fileName || null });
+
+  return emitOutgoing(session, 'chatbot', {
+    id: msgId,
+    to: jid,
+    body: caption || `📎 ${fileName || 'archivo'}`,
+    hasMedia: true,
+    msgType,
+    fileName: fileName || null,
+  });
 }
 
 // --- Grupos: nombre (subject) cacheado para el panel y el payload ---
@@ -450,14 +580,18 @@ function emitOutgoing(session, source, message) {
     timestamp: new Date().toISOString(),
     message: { ...message, contactJid },
   };
+  bumpDailyStat(session.clientId, 'out');
   recordChatMessage(session.clientId, contactJid, {
     direction: 'out',
     id: message.id || null,
     body: message.body,
     source,
+    hasMedia: Boolean(message.hasMedia),
+    msgType: message.msgType || null,
+    fileName: message.fileName || null,
     timestamp: payload.timestamp,
   });
-  if (io) io.emit('message:outgoing', payload);
+  scopedEmit('message:outgoing', session.clientId, payload);
   return payload;
 }
 
@@ -872,6 +1006,15 @@ async function connectSocket(session) {
         },
       };
 
+      // Media entrante: guardamos el proto (claves de descifrado) para poder
+      // descargarla cuando el panel la pida — el archivo vive en WhatsApp.
+      if (payload.message.hasMedia && payload.message.id) {
+        rememberMedia(session.clientId, payload.message.id, {
+          msg, sessionId: session.sessionId,
+        });
+      }
+
+      bumpDailyStat(session.clientId, 'in');
       recordChatMessage(session.clientId, chatJid, {
         direction: 'in',
         id: payload.message.id,
@@ -879,10 +1022,11 @@ async function connectSocket(session) {
         senderName: payload.message.senderName,
         participant: payload.message.participant,
         hasMedia: payload.message.hasMedia,
+        msgType: payload.message.type,
         timestamp: payload.timestamp,
       }, { senderName: isGroup ? contact.groupSubject : payload.message.senderName, isGroup });
 
-      if (io) io.emit('message:incoming', payload);
+      scopedEmit('message:incoming', session.clientId, payload);
 
       // GRUPOS: responder solo si le hablan al bot (mención/cita/palabra clave).
       // El mensaje ya está en el panel y en el buffer del chat — el bot lo
@@ -1178,7 +1322,7 @@ async function deleteSession(sessionId) {
     warning = `No se pudo borrar ${authDir}: ${error.message}`;
   }
 
-  if (io) io.emit('session:removed', warning ? { sessionId, warning } : { sessionId });
+  scopedEmit('session:removed', session?.clientId ?? null, warning ? { sessionId, warning } : { sessionId });
   return warning ? { ok: true, warning } : { ok: true };
 }
 
@@ -1200,7 +1344,7 @@ async function dropSessionsForClient(clientId) {
     sessions.delete(sid);
     const authDir = path.join(config.AUTH_DATA_PATH, `session-${sid}`);
     try { await fs.rm(authDir, { recursive: true, force: true }); } catch { /* ignore */ }
-    if (io) io.emit('session:removed', { sessionId: sid });
+    scopedEmit('session:removed', clientId, { sessionId: sid });
     count += 1;
   }
   return count;
@@ -1377,6 +1521,8 @@ module.exports = {
   invalidateBotState,
   getRecentConversations,
   getContactProfile,
+  getChatMedia,
+  sendMediaMessage,
   createGroup,
   joinGroupByInvite,
 };

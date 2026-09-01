@@ -22,6 +22,7 @@ const webhookRoutes = require('./modules/webhooks/routes');
 const pairingRoutes = require('./modules/pairing/routes');
 const clientAuthRoutes = require('./modules/client-auth/routes');
 const clientPanelRoutes = require('./modules/client-panel/routes');
+const statsRoutes = require('./modules/stats/routes');
 
 console.log('Iniciando app Node...');
 
@@ -29,6 +30,45 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: true, methods: ['GET', 'POST'] },
+});
+
+// --- Auth del socket: NADIE escucha sin sesión válida ---
+// Antes el socket era anónimo y los emits globales: cualquier navegador podía
+// conectar y ver los mensajes de TODOS los clientes. Ahora: cookie de admin
+// (sala 'admins', lo ve todo) o cookie de cliente (sala 'client:<id>', solo lo
+// suyo). El enrutado por salas lo hace el manager en cada emit.
+function parseCookies(header) {
+  const out = {};
+  for (const part of String(header || '').split(';')) {
+    const idx = part.indexOf('=');
+    if (idx > 0) {
+      try {
+        out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
+      } catch { /* cookie malformada: ignorar */ }
+    }
+  }
+  return out;
+}
+
+io.use(async (socket, next) => {
+  try {
+    const cookies = parseCookies(socket.handshake.headers.cookie);
+    const admin = await authService.validateSession(cookies.session);
+    if (admin) {
+      socket.data.role = 'admin';
+      socket.data.adminId = admin.adminId;
+      return next();
+    }
+    const client = await clientAuthService.validateSession(cookies.client_session);
+    if (client) {
+      socket.data.role = 'client';
+      socket.data.clientId = client.clientId;
+      return next();
+    }
+    return next(new Error('unauthorized'));
+  } catch {
+    return next(new Error('unauthorized'));
+  }
 });
 
 app.set('trust proxy', 1);
@@ -45,7 +85,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '2mb' }));
+// 25mb: los adjuntos del composer viajan en base64 (16MB de archivo ≈ 22MB de JSON).
+app.use(express.json({ limit: '25mb' }));
 app.use(cookieParser());
 
 console.log(`Config: PORT=${config.PORT} CORS_ORIGINS=${config.CORS_ORIGINS.join(',')} AUTH=${config.AUTH_DATA_PATH}`);
@@ -64,6 +105,7 @@ app.use('/api/sessions', sessionsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/pairing', pairingRoutes);
+app.use('/api/stats', statsRoutes);
 // Panel self-service por cliente. El específico (/api/client/auth) ANTES del
 // genérico (/api/client), y ambos antes del catch-all del SPA.
 app.use('/api/client/auth', clientAuthRoutes);
