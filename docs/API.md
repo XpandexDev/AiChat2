@@ -62,7 +62,7 @@ avisar a la otra parte de un contrato).
 | GET | `/me` | Identidad + estado de la conexión WhatsApp |
 | POST | `/messages` | Enviar texto o archivo (URL o base64); inicia conversaciones |
 | GET | `/conversations` | Conversaciones recientes |
-| GET | `/conversations/{jid}/messages` | Hilo reciente con un contacto |
+| GET | `/conversations/{jid}/messages` | Hilo con un contacto (paginable: `limit`, `before`) |
 | GET | `/contacts/{jid}` | Perfil: nombre, foto, "info", empresa |
 | GET | `/handoff` | Contactos en atención humana |
 | POST | `/handoff` | Pausar el bot para un contacto (`{contactJid, motivo?, resumen?}`) |
@@ -135,9 +135,12 @@ se ignora) → `handoff` → `horario/bot on-off` → el bot responde.
 - **Rate limit**: 120 peticiones/minuto por key → `429` con `Retry-After`.
 - **Archivos**: hasta 16MB. Por URL solo tipos permitidos verificados por
   Content-Type real (PDF, JPG/PNG/WebP, DOC/DOCX, XLS/XLSX, CSV, ZIP).
-- **Conversaciones**: son un buffer reciente en memoria (~50 mensajes por
-  conversación). **No es un histórico persistente** — un reinicio del servicio
-  lo vacía. Si tu integración necesita histórico, guárdalo en tu lado.
+- **Conversaciones**: histórico persistente con **retención de 7 días**
+  (configurable con `MESSAGE_RETENTION_DAYS`). Pasada la ventana, los mensajes se
+  purgan automáticamente. Si necesitas conservarlos más tiempo, guárdalos en tu
+  lado (o suscríbete a los eventos `message.received` / `message.sent`).
+  `GET /v1/conversations/{jid}/messages` acepta `limit` (máx. 500) y `before`
+  (timestamp ISO) para paginar hacia atrás.
 - **Sesión**: si el WhatsApp del cliente no está vinculado/conectado, los envíos
   devuelven `409 session_not_ready`.
 - Los envíos por API aparecen en el panel del chat etiquetados como **API** y

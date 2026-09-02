@@ -39,9 +39,8 @@ interface RecentConversation {
 const convKey = (clientId: number, contactJid: string) => `${clientId}|${contactJid}`;
 
 /**
- * Store del chat en vivo. Fuentes:
- *  - Seed: GET /api/sessions/chat/recent (ring buffer RAM del backend — contexto
- *    reciente; un reinicio del backend lo vacía: NO hay histórico persistente).
+ * Store del chat. Fuentes:
+ *  - Seed: GET /api/sessions/chat/recent (histórico en BD, retención de 7 días).
  *  - Vivo: eventos message:incoming/outgoing del socket (SessionsService).
  * Fusión reactiva con dedupe por id de mensaje (o timestamp+body si no hay id).
  */

@@ -76,9 +76,9 @@ function emit(event, data) {
   if (type && data?.clientId) dispatchEvent(data.clientId, type, data);
 }
 
-// --- Chat en vivo: ring buffer de mensajes EN RAM (sin BD, por decisión de
-// producto: no se persiste contenido de conversaciones). Da contexto reciente
-// al abrir el panel; un reinicio lo vacía. Estructura:
+// --- Chat: ring buffer EN RAM como caché rápida del hilo reciente. La fuente
+// de verdad es la BD (wa_messages / wa_conversations) con retención de 7 días;
+// este buffer solo evita ir a BD en el camino caliente del mensaje. Estructura:
 //   chatBuffer: clientId -> Map(contactJid -> { contactJid, senderName, isGroup,
 //                                               lastAt, messages: [...] })
 const CHAT_MSGS_PER_CONV = 50;    // últimos N mensajes por conversación
@@ -105,6 +105,100 @@ function chatIdentity(jid) {
   return lidToPhone.get(norm) || norm;
 }
 
+function persistChatMessage(clientId, contactJid, entry, conv) {
+  const ts = new Date(entry.timestamp);
+  pool.execute(
+    `INSERT INTO wa_messages
+       (client_id, contact_jid, direction, wa_message_id, body, sender_name,
+        participant, is_group, has_media, msg_type, file_name, source, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      clientId, contactJid, entry.direction === 'out' ? 'out' : 'in',
+      entry.id || null, entry.body || null, entry.senderName || null,
+      entry.participant || null, conv.isGroup ? 1 : 0,
+      entry.hasMedia ? 1 : 0, entry.msgType || null, entry.fileName || null,
+      entry.source || null, ts,
+    ],
+  ).catch((err) => console.error('persistChatMessage:', err.message));
+
+  pool.execute(
+    `INSERT INTO wa_conversations (client_id, contact_jid, display_name, is_group, last_at, last_body)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       display_name = COALESCE(VALUES(display_name), display_name),
+       is_group = VALUES(is_group),
+       last_at = VALUES(last_at),
+       last_body = VALUES(last_body)`,
+    [clientId, contactJid, conv.senderName || null, conv.isGroup ? 1 : 0, ts, entry.body || null],
+  ).catch(() => {});
+}
+
+/**
+ * Conversaciones desde el HISTÓRICO (BD, ventana de retención).
+ * Sustituye a la lectura del buffer RAM para el panel y la API.
+ */
+async function listConversations(clientId, limit = 200) {
+  const [rows] = await pool.execute(
+    `SELECT client_id AS clientId, contact_jid AS contactJid, display_name AS senderName,
+            is_group AS isGroup, last_at AS lastAt, last_body AS lastBody
+     FROM wa_conversations
+     WHERE client_id = ?
+     ORDER BY last_at DESC
+     LIMIT ?`,
+    [clientId, Number(limit) || 200],
+  );
+  return rows.map((r) => ({
+    clientId: r.clientId,
+    contactJid: r.contactJid,
+    senderName: r.senderName,
+    isGroup: Boolean(r.isGroup),
+    lastAt: r.lastAt ? new Date(r.lastAt).toISOString() : '',
+    lastBody: r.lastBody || '',
+  }));
+}
+
+/** Mensajes de un hilo, más antiguos primero. `before` pagina hacia atrás. */
+async function listMessages(clientId, contactJid, { limit = 100, before = null } = {}) {
+  const lim = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const params = [clientId, contactJid];
+  let where = 'client_id = ? AND contact_jid = ?';
+  if (before) {
+    where += ' AND created_at < ?';
+    params.push(new Date(before));
+  }
+  params.push(lim);
+  const [rows] = await pool.execute(
+    `SELECT direction, wa_message_id AS id, body, sender_name AS senderName,
+            participant, has_media AS hasMedia, msg_type AS msgType,
+            file_name AS fileName, source, created_at AS timestamp
+     FROM wa_messages WHERE ${where}
+     ORDER BY created_at DESC LIMIT ?`,
+    params,
+  );
+  return rows.reverse().map((m) => ({
+    direction: m.direction,
+    id: m.id,
+    body: m.body || '',
+    senderName: m.senderName,
+    participant: m.participant,
+    hasMedia: Boolean(m.hasMedia),
+    msgType: m.msgType,
+    fileName: m.fileName,
+    source: m.source,
+    timestamp: new Date(m.timestamp).toISOString(),
+  }));
+}
+
+/** Conversaciones + últimos mensajes, para hidratar el panel de una vez. */
+async function getConversationsWithMessages(clientId, perConv = 50) {
+  const convs = await listConversations(clientId);
+  const out = [];
+  for (const c of convs) {
+    out.push({ ...c, messages: await listMessages(clientId, c.contactJid, { limit: perConv }) });
+  }
+  return out;
+}
+
 function recordChatMessage(clientId, contactJid, entry, meta = {}) {
   if (!clientId || !contactJid) return;
   let convs = chatBuffer.get(clientId);
@@ -126,6 +220,10 @@ function recordChatMessage(clientId, contactJid, entry, meta = {}) {
   conv.lastAt = entry.timestamp;
   conv.messages.push(entry);
   if (conv.messages.length > CHAT_MSGS_PER_CONV) conv.messages.shift();
+
+  // Persistencia con retención de 7 días (lib/retention.js purga lo viejo).
+  // Best-effort: un fallo de BD nunca frena el mensaje de WhatsApp.
+  persistChatMessage(clientId, contactJid, entry, conv);
   // Evicción: la conversación más antigua (primera del Map) sale.
   if (convs.size > CHAT_CONVS_PER_CLIENT) {
     const oldest = convs.keys().next().value;
@@ -1635,6 +1733,9 @@ module.exports = {
   emit,
   invalidateBotState,
   getRecentConversations,
+  listConversations,
+  listMessages,
+  getConversationsWithMessages,
   getContactProfile,
   getChatMedia,
   sendMediaMessage,

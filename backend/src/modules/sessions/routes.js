@@ -1,4 +1,5 @@
 const express = require('express');
+const pool = require('../../db/pool');
 const manager = require('./manager');
 const handoff = require('../handoff/service');
 const { requireAdmin } = require('../../middleware/auth');
@@ -20,14 +21,25 @@ router.get('/', (req, res) => {
   res.json(manager.listSessions());
 });
 
-// --- Chat en vivo ---
-// Conversaciones recientes desde el ring buffer EN RAM del manager (sin BD:
-// contexto para hidratar la vista de chat al abrir; un reinicio lo vacía).
+// --- Conversaciones ---
+// Histórico persistente con ventana de retención (7 días por defecto,
+// MESSAGE_RETENTION_DAYS). La purga corre cada hora (lib/retention.js).
 // (Antes de /:sessionId para que "chat" no se interprete como un sessionId.)
-router.get('/chat/recent', (req, res) => {
+router.get('/chat/recent', async (req, res) => {
   const clientId = req.query.clientId ? Number(req.query.clientId) : null;
   try {
-    return res.json({ conversations: manager.getRecentConversations(clientId) });
+    // Histórico persistente (ventana de retención). Sin clientId, todos los
+    // clientes: el panel admin lo necesita para su vista global.
+    if (clientId) {
+      return res.json({ conversations: await manager.getConversationsWithMessages(clientId) });
+    }
+    const [rows] = await pool.execute('SELECT id FROM clients WHERE is_active = 1');
+    const all = [];
+    for (const r of rows) {
+      all.push(...await manager.getConversationsWithMessages(r.id));
+    }
+    all.sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
+    return res.json({ conversations: all });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
