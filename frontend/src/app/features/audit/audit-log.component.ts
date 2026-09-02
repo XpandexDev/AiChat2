@@ -19,6 +19,8 @@ const ACTIONS = [
   'panel.api_key_generate', 'panel.api_key_revoke', 'panel.password_change',
   'api.message_send', 'api.handoff_start', 'api.handoff_resume', 'api.group_create', 'api.group_join',
   'panel.events_webhook_update', 'client.events_webhook_update', 'api.events_webhook_update',
+  'client.whitelist_toggle', 'client.whitelist_add', 'client.whitelist_remove',
+  'panel.whitelist_toggle', 'panel.whitelist_add', 'panel.whitelist_remove', 'api.whitelist_toggle', 'api.whitelist_add',
 ] as const;
 
 interface DayGroup {
@@ -142,6 +144,14 @@ export class AuditLogComponent implements OnInit {
       case 'api.handoff_resume': return `La API del cliente ${res} devolvió al bot el contacto ${this.phone(d.contactJid)}`;
       case 'api.group_create': return `La API del cliente ${res} creó el grupo "${d.subject || ''}"`;
       case 'api.group_join': return `La API del cliente ${res} unió el bot a un grupo`;
+      case 'client.whitelist_toggle': return `${d.enabled ? 'Activó' : 'Desactivó'} la lista blanca del cliente ${res}`;
+      case 'client.whitelist_add': return `Añadió ${d.number || 'un número'} a la lista blanca del cliente ${res}`;
+      case 'client.whitelist_remove': return `Quitó ${d.number || 'un número'} de la lista blanca del cliente ${res}`;
+      case 'panel.whitelist_toggle': return `El cliente ${res} ${d.enabled ? 'activó' : 'desactivó'} su lista blanca`;
+      case 'panel.whitelist_add': return `El cliente ${res} añadió ${d.number || 'un número'} a su lista blanca`;
+      case 'panel.whitelist_remove': return `El cliente ${res} quitó ${d.number || 'un número'} de su lista blanca`;
+      case 'api.whitelist_toggle': return `La API del cliente ${res} ${d.enabled ? 'activó' : 'desactivó'} la lista blanca`;
+      case 'api.whitelist_add': return `La API del cliente ${res} añadió ${d.number || 'un número'} a la lista blanca`;
       case 'panel.events_webhook_update': return `El cliente ${res} ${d.configured ? 'configuró' : 'desactivó'} su webhook de eventos`;
       case 'client.events_webhook_update': return `${d.configured ? 'Configuró' : 'Desactivó'} el webhook de eventos del cliente ${res}`;
       case 'api.events_webhook_update': return `La API del cliente ${res} ${d.configured ? 'configuró' : 'desactivó'} el webhook de eventos`;
@@ -158,7 +168,7 @@ export class AuditLogComponent implements OnInit {
   /** Familia visual del evento (icono/color del punto del timeline). */
   family(action: string): string {
     if (action.startsWith('admin_')) return 'auth';
-    if (action.startsWith('client.blacklist')) return 'rule';
+    if (action.startsWith('client.blacklist') || action.includes('whitelist')) return 'rule';
     if (action.startsWith('client.')) return 'client';
     if (action.startsWith('session.')) return 'session';
     if (action.startsWith('group.')) return 'session';

@@ -70,6 +70,10 @@ avisar a la otra parte de un contrato).
 | POST | `/groups` | Crear grupo (`{subject, participants[]}`) |
 | POST | `/groups/join` | Unirse por enlace de invitación |
 | GET | `/stats/daily?days=14` | Mensajes por día (contadores) |
+| GET | `/whitelist` | Estado (activada o no) y números de la lista blanca |
+| PUT | `/whitelist` | Activar/desactivar (`{enabled: true}`) |
+| POST | `/whitelist` | Añadir número (`{number, note?}`) |
+| DELETE | `/whitelist/{number}` | Quitar número |
 
 Detalle completo con ejemplos de respuesta: **/api/docs**.
 
@@ -115,6 +119,16 @@ como eventos `message.delivered` / `message.read` al webhook.
 Puedes tener **varias keys con nombre** (prod, n8n, test…) y ver su último uso
 en el panel. Eliminar una key corta solo esa integración: rotación sin downtime
 creando la nueva antes de borrar la vieja.
+
+## Lista blanca (modo restringido)
+
+Con la lista blanca **activada**, el bot solo responde a los números que estén en
+ella — ideal para probar en producción sin atender a clientes reales. Desactivada,
+el bot responde a todos.
+
+Prioridad de las reglas sobre un mensaje entrante:
+`blacklist` (silencio total) → `lista blanca` (si está activa y el número no está,
+se ignora) → `handoff` → `horario/bot on-off` → el bot responde.
 
 ## Límites y comportamiento
 

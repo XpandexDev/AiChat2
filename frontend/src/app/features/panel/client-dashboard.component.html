@@ -171,7 +171,52 @@
     </div>
   </section>
 
-  <section id="sinbot" class="card" xpReveal [revealDelay]="240">
+  <section id="listablanca" class="card" xpReveal [revealDelay]="240">
+    <h2>Lista blanca</h2>
+    <p class="muted gap-top-sm small">
+      Al activarla, el bot <strong>solo</strong> responde a los números de esta lista.
+      Útil para hacer pruebas sin que el bot atienda a clientes reales.
+    </p>
+    <div class="meta gap-top-sm">
+      @if (whitelist().enabled) {
+        <span class="badge warn">Activa — solo {{ whitelist().entries.length }} número(s)</span>
+      } @else {
+        <span class="badge mute">Desactivada</span>
+      }
+      <button class="ghost mini" (click)="toggleWhitelist()" [disabled]="savingWl()">
+        {{ whitelist().enabled ? 'Desactivar' : 'Activar' }}
+      </button>
+    </div>
+    <div class="form-grid bl-grid gap-top">
+      <label>
+        Número
+        <input [(ngModel)]="newWlNumber" placeholder="34600111222" />
+      </label>
+      <label>
+        Nota (opcional)
+        <input [(ngModel)]="newWlNote" placeholder="quién es" />
+      </label>
+      <button class="primary" (click)="addWhitelist()" [disabled]="savingWl()">Añadir</button>
+    </div>
+    @if (!whitelist().entries.length) {
+      <p class="muted small gap-top-sm">Lista vacía.</p>
+    } @else {
+      <table class="data gap-top">
+        <thead><tr><th>Número</th><th>Nota</th><th></th></tr></thead>
+        <tbody>
+          @for (w of whitelist().entries; track w.contactJid) {
+            <tr>
+              <td class="mono">{{ contactNumber(w.contactJid) }}</td>
+              <td>{{ w.note || '—' }}</td>
+              <td class="right"><button class="danger" (click)="removeWhitelist(w.contactJid)">Quitar</button></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </section>
+
+  <section id="sinbot" class="card" xpReveal [revealDelay]="300">
     <h2>Números sin bot</h2>
     <p class="muted" style="margin-top:4px;font-size:.9rem">
       El bot ignora por completo a estos números (no responde nada). Útil para contactos que no deben recibir respuestas automáticas.

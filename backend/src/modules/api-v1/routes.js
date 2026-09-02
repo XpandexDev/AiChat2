@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../../db/pool');
 const manager = require('../sessions/manager');
 const handoff = require('../handoff/service');
+const whitelist = require('../whitelist/service');
 const { requireApiKey } = require('../../middleware/api-key');
 const { makeApiLimiter } = require('../../middleware/rate-limit');
 const { auditLog } = require('../../middleware/audit');
@@ -277,6 +278,48 @@ router.post('/groups/join', async (req, res) => {
     const result = await manager.joinGroupByInvite(session.sessionId, String(req.body?.invite || ''));
     auditLog(null, 'api.group_join', 'client', String(req.clientId), { groupId: result.id }, req).catch(() => {});
     return res.json(result);
+  } catch (err) {
+    return mapError(res, err);
+  }
+});
+
+// --- Whitelist (lista blanca activable) ---
+router.get('/whitelist', async (req, res) => {
+  try {
+    return res.json(await whitelist.getState(req.clientId));
+  } catch (err) {
+    return mapError(res, err);
+  }
+});
+
+router.put('/whitelist', async (req, res) => {
+  try {
+    const state = await whitelist.setEnabled(req.clientId, req.body?.enabled === true);
+    auditLog(null, 'api.whitelist_toggle', 'client', String(req.clientId),
+      { enabled: req.body?.enabled === true }, req).catch(() => {});
+    return res.json(state);
+  } catch (err) {
+    return mapError(res, err);
+  }
+});
+
+router.post('/whitelist', async (req, res) => {
+  const jid = manager.normalizeJid(req.body?.number || req.body?.contactJid);
+  if (!jid) return fail(res, 400, 'validation', 'number es requerido (formato internacional)');
+  try {
+    const state = await whitelist.add(req.clientId, jid, req.body?.note);
+    auditLog(null, 'api.whitelist_add', 'client', String(req.clientId), { number: jid.split('@')[0] }, req).catch(() => {});
+    return res.status(201).json(state);
+  } catch (err) {
+    return mapError(res, err);
+  }
+});
+
+router.delete('/whitelist/:number', async (req, res) => {
+  const jid = manager.normalizeJid(req.params.number);
+  if (!jid) return fail(res, 400, 'validation', 'number invalido');
+  try {
+    return res.json(await whitelist.remove(req.clientId, jid));
   } catch (err) {
     return mapError(res, err);
   }

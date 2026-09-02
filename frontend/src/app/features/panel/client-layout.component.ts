@@ -25,6 +25,7 @@ export class ClientLayoutComponent implements OnDestroy {
     { id: 'bot', label: 'Bot' },
     { id: 'whatsapp', label: 'WhatsApp' },
     { id: 'horario', label: 'Horario' },
+    { id: 'listablanca', label: 'Lista blanca' },
     { id: 'sinbot', label: 'Números sin bot' },
   ];
 

@@ -2,6 +2,11 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+export interface WhitelistState {
+  enabled: boolean;
+  entries: BlacklistEntry[];
+}
+
 export interface ApiKeyInfo {
   id: number;
   name: string;
@@ -85,6 +90,22 @@ export class ClientsService {
 
   regeneratePairing(id: number): Observable<Client> {
     return this.http.post<Client>(`${this.base}/${id}/pairing/regenerate`, {});
+  }
+
+  getWhitelist(id: number): Observable<WhitelistState> {
+    return this.http.get<WhitelistState>(`${this.base}/${id}/whitelist`);
+  }
+
+  setWhitelistEnabled(id: number, enabled: boolean): Observable<WhitelistState> {
+    return this.http.patch<WhitelistState>(`${this.base}/${id}/whitelist`, { enabled });
+  }
+
+  addWhitelist(id: number, number: string, note: string | null): Observable<WhitelistState> {
+    return this.http.post<WhitelistState>(`${this.base}/${id}/whitelist`, { number, note });
+  }
+
+  removeWhitelist(id: number, number: string): Observable<WhitelistState> {
+    return this.http.delete<WhitelistState>(`${this.base}/${id}/whitelist`, { params: new HttpParams().set('number', number) });
   }
 
   listApiKeys(id: number): Observable<ApiKeyInfo[]> {

@@ -8,6 +8,7 @@ const pool = require('../../db/pool');
 const webhooks = require('../webhooks/service');
 const handoff = require('../handoff/service');
 const blacklist = require('../blacklist/service');
+const whitelist = require('../whitelist/service');
 const { isBotActive } = require('../../lib/bot-schedule');
 const { dispatchEvent } = require('../events/dispatcher');
 
@@ -1158,6 +1159,17 @@ async function connectSocket(session) {
         isBlocked = false; // fail-open
       }
       if (isBlocked) continue;
+
+      // Whitelist ACTIVABLE: si el cliente la tiene encendida, el bot solo
+      // atiende a los números de la lista (modo pruebas / bot restringido).
+      // Apagada, no aplica. Fail-open si la BD falla.
+      let blockedByWhitelist = false;
+      try {
+        blockedByWhitelist = await whitelist.isBlockedByWhitelist(session.clientId, contactJid);
+      } catch (e) {
+        blockedByWhitelist = false;
+      }
+      if (blockedByWhitelist) continue;
 
       // Handoff: si el contacto está en modo humano, el bot calla — no reenviamos
       // a n8n ni auto-respondemos. El panel ya ha visto el mensaje (emit de arriba)

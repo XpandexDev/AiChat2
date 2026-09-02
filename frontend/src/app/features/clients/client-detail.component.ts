@@ -2,7 +2,7 @@ import { Component, Input, OnDestroy, OnInit, computed, inject, signal, effect }
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
-import { Client, ClientsService, BlacklistEntry, ApiKeyInfo } from '../../core/api/clients.service';
+import { Client, ClientsService, BlacklistEntry, ApiKeyInfo, WhitelistState } from '../../core/api/clients.service';
 import { SessionsService, WaSession } from '../../core/api/sessions.service';
 import { WebhooksService } from '../../core/api/webhooks.service';
 import { ChatService, Conversation } from '../../core/api/chat.service';
@@ -137,6 +137,58 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
 
   newSessionId = '';
   newSessionMode: 'normal' | 'business' = 'normal';
+
+  // --- Whitelist (lista blanca activable) ---
+  readonly whitelist = signal<WhitelistState>({ enabled: false, entries: [] });
+  newWlNumber = '';
+  newWlNote = '';
+  readonly savingWl = signal(false);
+
+  loadWhitelist() {
+    this.clientsApi.getWhitelist(Number(this.id)).subscribe({
+      next: (st) => this.whitelist.set(st),
+      error: () => this.whitelist.set({ enabled: false, entries: [] }),
+    });
+  }
+
+  toggleWhitelist() {
+    const next = !this.whitelist().enabled;
+    if (next && !this.whitelist().entries.length
+        && !confirm('La lista está vacía: al activarla el bot dejará de responder a TODOS. ¿Continuar?')) return;
+    this.savingWl.set(true);
+    this.clientsApi.setWhitelistEnabled(Number(this.id), next).subscribe({
+      next: (st) => {
+        this.whitelist.set(st);
+        this.savingWl.set(false);
+        this.notice.set(next ? 'Lista blanca activada: el bot solo responde a esos números' : 'Lista blanca desactivada');
+      },
+      error: (err) => { this.savingWl.set(false); this.error.set(errorToMessage(err, 'No se pudo cambiar la lista blanca')); },
+    });
+  }
+
+  addWhitelist() {
+    const num = this.newWlNumber.trim();
+    if (!num) return;
+    this.savingWl.set(true);
+    this.error.set(null);
+    this.clientsApi.addWhitelist(Number(this.id), num, this.newWlNote.trim() || null).subscribe({
+      next: (st) => {
+        this.whitelist.set(st);
+        this.newWlNumber = '';
+        this.newWlNote = '';
+        this.savingWl.set(false);
+        this.notice.set('Número añadido a la lista blanca');
+      },
+      error: (err) => { this.savingWl.set(false); this.error.set(errorToMessage(err, 'No se pudo añadir el número')); },
+    });
+  }
+
+  removeWhitelist(jid: string) {
+    this.clientsApi.removeWhitelist(Number(this.id), jid).subscribe({
+      next: (st) => { this.whitelist.set(st); this.notice.set('Número quitado de la lista blanca'); },
+      error: (err) => this.error.set(errorToMessage(err, 'No se pudo quitar el número')),
+    });
+  }
 
   // --- API keys (varias por cliente) + webhook de eventos ---
   readonly apiKeys = signal<ApiKeyInfo[]>([]);
@@ -341,6 +393,7 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
     if (!this.id) return;
     this.load();
     this.loadApiKeys();
+    this.loadWhitelist();
     this.chat.hydrate();
   }
 

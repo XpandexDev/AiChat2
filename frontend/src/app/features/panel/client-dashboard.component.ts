@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit, effect, inject, signal } from '@angular/c
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import {
-  ClientPanelService, ClientMeClient, ClientSessionView, ScheduleWindow, SchedulePayload, BlacklistEntry, HandoffContact,
+  ClientPanelService, ClientMeClient, ClientSessionView, ScheduleWindow, SchedulePayload, BlacklistEntry, HandoffContact, WhitelistState,
 } from '../../core/api/client-panel.service';
 import { errorToMessage } from '../../core/api/error';
 import { ContactsService } from '../../core/api/contacts.service';
@@ -76,6 +76,12 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
   newBlacklistNote = '';
   readonly savingBlacklist = signal(false);
 
+  // Whitelist (lista blanca activable)
+  readonly whitelist = signal<WhitelistState>({ enabled: false, entries: [] });
+  newWlNumber = '';
+  newWlNote = '';
+  readonly savingWl = signal(false);
+
   // Handoff (contactos con humano al mando)
   readonly handoffs = signal<HandoffContact[]>([]);
   readonly replyTarget = signal<HandoffContact | null>(null);
@@ -100,6 +106,10 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
     this.api.getSchedule().subscribe({
       next: (s) => this.applySchedule(s),
       error: () => this.applySchedule({ scheduleEnabled: false, timezone: 'Europe/Madrid', autoReplyText: '', windows: [] }),
+    });
+    this.api.getWhitelist().subscribe({
+      next: (st) => this.whitelist.set(st),
+      error: () => this.whitelist.set({ enabled: false, entries: [] }),
     });
     this.api.listBlacklist().subscribe({
       next: (l) => this.blacklist.set(l),
@@ -156,6 +166,45 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
 
   contactNumber(jid: string): string {
     return (jid || '').split('@')[0];
+  }
+
+  toggleWhitelist() {
+    const next = !this.whitelist().enabled;
+    if (next && !this.whitelist().entries.length
+        && !confirm('La lista está vacía: al activarla el bot dejará de responder a TODOS. ¿Continuar?')) return;
+    this.savingWl.set(true);
+    this.api.setWhitelistEnabled(next).subscribe({
+      next: (st) => {
+        this.whitelist.set(st);
+        this.savingWl.set(false);
+        this.notice.set(next ? 'Lista blanca activada: el bot solo responde a esos números' : 'Lista blanca desactivada');
+      },
+      error: (err) => { this.savingWl.set(false); this.error.set(errorToMessage(err, 'No se pudo cambiar la lista blanca')); },
+    });
+  }
+
+  addWhitelist() {
+    const num = this.newWlNumber.trim();
+    if (!num) return;
+    this.savingWl.set(true);
+    this.error.set(null);
+    this.api.addWhitelist(num, this.newWlNote.trim() || null).subscribe({
+      next: (st) => {
+        this.whitelist.set(st);
+        this.newWlNumber = '';
+        this.newWlNote = '';
+        this.savingWl.set(false);
+        this.notice.set('Número añadido a la lista blanca');
+      },
+      error: (err) => { this.savingWl.set(false); this.error.set(errorToMessage(err, 'No se pudo añadir el número')); },
+    });
+  }
+
+  removeWhitelist(jid: string) {
+    this.api.removeWhitelist(jid).subscribe({
+      next: (st) => { this.whitelist.set(st); this.notice.set('Número quitado de la lista blanca'); },
+      error: (err) => this.error.set(errorToMessage(err, 'No se pudo quitar el número')),
+    });
   }
 
   addBlacklist() {

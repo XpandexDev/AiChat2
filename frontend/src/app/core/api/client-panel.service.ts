@@ -2,6 +2,11 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+export interface WhitelistState {
+  enabled: boolean;
+  entries: BlacklistEntry[];
+}
+
 export interface PanelApiKeyInfo {
   id: number;
   name: string;
@@ -108,6 +113,23 @@ export class ClientPanelService {
 
   sendReply(sessionId: string, to: string, text: string): Observable<unknown> {
     return this.http.post(`${this.base}/send`, { sessionId, to, text });
+  }
+
+  // --- Whitelist (lista blanca activable) ---
+  getWhitelist(): Observable<WhitelistState> {
+    return this.http.get<WhitelistState>(`${this.base}/whitelist`);
+  }
+
+  setWhitelistEnabled(enabled: boolean): Observable<WhitelistState> {
+    return this.http.patch<WhitelistState>(`${this.base}/whitelist`, { enabled });
+  }
+
+  addWhitelist(number: string, note: string | null): Observable<WhitelistState> {
+    return this.http.post<WhitelistState>(`${this.base}/whitelist`, { number, note });
+  }
+
+  removeWhitelist(number: string): Observable<WhitelistState> {
+    return this.http.delete<WhitelistState>(`${this.base}/whitelist`, { params: new HttpParams().set('number', number) });
   }
 
   // --- Ajustes ---
