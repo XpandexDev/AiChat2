@@ -14,6 +14,9 @@ export interface WaSession {
   syncing?: boolean;
   syncProgress?: number | null;
   syncedChats?: number;
+  historyState?: 'none' | 'syncing' | 'imported';
+  historyMessages?: number;
+  historySyncedAt?: string | null;
   updatedAt: string;
 }
 

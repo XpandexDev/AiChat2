@@ -7,6 +7,7 @@ import {
 import { errorToMessage } from '../../core/api/error';
 import { ContactsService } from '../../core/api/contacts.service';
 import { AvatarComponent } from '../../shared/avatar.component';
+import { HistoryBadgeComponent } from '../../shared/history-badge.component';
 import { RevealDirective } from '../../shared/reveal.directive';
 import { ClientRealtimeService } from '../../core/api/client-realtime.service';
 
@@ -25,7 +26,7 @@ const DAY_LABELS: Record<number, string> = {
 @Component({
   selector: 'app-client-dashboard',
   standalone: true,
-  imports: [FormsModule, DatePipe, RevealDirective, AvatarComponent],
+  imports: [FormsModule, DatePipe, RevealDirective, AvatarComponent, HistoryBadgeComponent],
   templateUrl: './client-dashboard.component.html',
   styleUrl: './client-dashboard.component.scss',
 })

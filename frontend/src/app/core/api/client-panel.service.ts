@@ -37,6 +37,9 @@ export interface ClientSessionView {
   connectedNumber: string | null;
   syncing?: boolean;
   syncProgress?: number | null;
+  historyState?: 'none' | 'syncing' | 'imported';
+  historyMessages?: number;
+  historySyncedAt?: string | null;
 }
 
 export interface ScheduleWindow {

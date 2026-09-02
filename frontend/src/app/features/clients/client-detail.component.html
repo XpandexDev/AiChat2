@@ -212,9 +212,10 @@
               <div class="session-row">
                 <span class="id">{{ s.sessionId }}</span>
                 <span class="badge {{ statusVariant(s.status) }}">{{ statusLabel(s.status) }}</span>
-                @if (s.syncing) {
-                  <span class="badge info">Sincronizando chats{{ s.syncProgress != null ? ' ' + s.syncProgress + '%' : '…' }}</span>
-                }
+                <xp-history-badge
+                  [state]="s.historyState" [messages]="s.historyMessages || 0"
+                  [syncedAt]="s.historySyncedAt" [syncing]="!!s.syncing" [progress]="s.syncProgress"
+                />
                 @if (s.connectedNumber) { <span class="small">📱 {{ s.connectedNumber }}</span> }
                 <span class="grow"></span>
                 @if (canStart(s.status)) {

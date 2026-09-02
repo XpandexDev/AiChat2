@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { SessionsService } from '../../core/api/sessions.service';
 import { ClientsService, Client } from '../../core/api/clients.service';
 import { errorToMessage } from '../../core/api/error';
+import { HistoryBadgeComponent } from '../../shared/history-badge.component';
 
 @Component({
   selector: 'app-sessions-list',
   standalone: true,
-  imports: [RouterLink, FormsModule],
+  imports: [RouterLink, FormsModule, HistoryBadgeComponent],
   templateUrl: './sessions-list.component.html',
   styleUrl: './sessions.scss',
 })

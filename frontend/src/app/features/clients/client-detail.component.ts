@@ -9,6 +9,7 @@ import { ChatService, Conversation } from '../../core/api/chat.service';
 import { ContactsService } from '../../core/api/contacts.service';
 import { ThreadComponent } from '../chat/thread.component';
 import { AvatarComponent } from '../../shared/avatar.component';
+import { HistoryBadgeComponent } from '../../shared/history-badge.component';
 import { errorToMessage } from '../../core/api/error';
 
 type DetailTab = 'resumen' | 'chat' | 'whatsapp' | 'acceso' | 'integracion';
@@ -16,7 +17,7 @@ type DetailTab = 'resumen' | 'chat' | 'whatsapp' | 'acceso' | 'integracion';
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [RouterLink, FormsModule, DatePipe, ThreadComponent, AvatarComponent],
+  imports: [RouterLink, FormsModule, DatePipe, ThreadComponent, AvatarComponent, HistoryBadgeComponent],
   templateUrl: './client-detail.component.html',
   styleUrl: './clients.scss',
 })
