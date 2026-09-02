@@ -217,7 +217,11 @@
                 }
                 @if (s.connectedNumber) { <span class="small">📱 {{ s.connectedNumber }}</span> }
                 <span class="grow"></span>
-                <button class="ghost" (click)="stopSession(s.sessionId)">Parar</button>
+                @if (canStart(s.status)) {
+                  <button class="primary" (click)="resumeSession(s.sessionId)">Iniciar</button>
+                } @else {
+                  <button class="ghost" (click)="stopSession(s.sessionId)">Parar</button>
+                }
                 <button class="danger" (click)="removeSession(s.sessionId)">Eliminar</button>
               </div>
               @if (s.qrDataUrl) {

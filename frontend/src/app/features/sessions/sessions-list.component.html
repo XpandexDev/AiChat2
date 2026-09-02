@@ -79,7 +79,11 @@
             <td>{{ s.connectedNumber || '—' }}</td>
             <td>{{ s.mode || '—' }}</td>
             <td class="right">
-              <button class="ghost" (click)="stopSession(s.sessionId)">Parar</button>
+              @if (canStart(s.status)) {
+                <button class="primary" (click)="resumeSession(s)">Iniciar</button>
+              } @else {
+                <button class="ghost" (click)="stopSession(s.sessionId)">Parar</button>
+              }
               <button class="danger" (click)="removeSession(s.sessionId)">Eliminar</button>
             </td>
           </tr>

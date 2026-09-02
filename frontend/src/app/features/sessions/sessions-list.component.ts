@@ -64,6 +64,20 @@ export class SessionsListComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Reanuda una sesión existente sin crear una nueva. */
+  resumeSession(s: { sessionId: string; clientId: number | null }) {
+    if (!s.clientId) { this.error.set('La sesión no tiene cliente asociado'); return; }
+    this.error.set(null);
+    this.sessionsApi.start({ clientId: s.clientId, sessionId: s.sessionId, mode: 'normal' }).subscribe({
+      next: () => this.notice.set('Sesión iniciada'),
+      error: (err: unknown) => this.error.set(errorToMessage(err, 'No se pudo iniciar la sesión')),
+    });
+  }
+
+  canStart(status: string): boolean {
+    return ['stopped', 'auth_failure', 'error', 'disconnected'].includes(status);
+  }
+
   stopSession(sid: string) {
     this.sessionsApi.stop(sid).subscribe({
       error: (err) => this.error.set(errorToMessage(err, 'No se pudo parar la sesión')),

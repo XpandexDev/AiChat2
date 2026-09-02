@@ -501,6 +501,25 @@ export class ClientDetailComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Reanuda una sesión ya existente (detenida/caída) sin crear una nueva. */
+  resumeSession(sid: string) {
+    const c = this.client();
+    if (!c) return;
+    this.error.set(null);
+    this.sessionsApi.start({ clientId: c.id, sessionId: sid, mode: 'normal' }).subscribe({
+      next: () => {
+        this.notice.set('Sesión iniciada — si pide QR, escanéalo desde el enlace de activación');
+        this.load();
+      },
+      error: (err) => this.error.set(errorToMessage(err, 'No se pudo iniciar la sesión')),
+    });
+  }
+
+  /** Estados en los que la sesión NO está corriendo y se puede (re)iniciar. */
+  canStart(status: string): boolean {
+    return ['stopped', 'auth_failure', 'error', 'disconnected'].includes(status);
+  }
+
   stopSession(sid: string) {
     this.sessionsApi.stop(sid).subscribe({
       next: () => this.load(),
