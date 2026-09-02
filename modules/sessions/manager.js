@@ -54,6 +54,9 @@ function serializeSession(session) {
     syncing: Boolean(session.syncing),
     syncProgress: session.syncProgress ?? null,
     syncedChats: session.syncedChats || 0,
+    historyState: session.historyState || 'none',
+    historyMessages: session.historyMessages || 0,
+    historySyncedAt: session.historySyncedAt || null,
     updatedAt: session.updatedAt,
   };
 }
@@ -260,6 +263,23 @@ function bumpDailyStat(clientId, direction) {
      ON DUPLICATE KEY UPDATE ${col} = ${col} + 1`,
     [clientId],
   ).catch(() => {}); // best-effort: una métrica nunca frena un mensaje
+}
+
+// Estado del historial POR SESIÓN, persistido: el aviso de "sincronizando"
+// dura segundos, pero la pregunta "¿tiene historial importado?" debe tener
+// respuesta siempre — también tras un reinicio.
+function persistHistoryState(session) {
+  pool.execute(
+    `UPDATE wa_sessions
+     SET history_state = ?, history_messages = ?, history_synced_at = ?
+     WHERE session_id = ?`,
+    [
+      session.historyState || 'none',
+      session.historyMessages || 0,
+      session.historySyncedAt ? new Date(session.historySyncedAt) : null,
+      session.sessionId,
+    ],
+  ).catch((err) => console.error('persistHistoryState:', err.message));
 }
 
 // --- Importación del historial inicial (lote reciente de WhatsApp) ---
@@ -1166,12 +1186,17 @@ async function connectSocket(session) {
     const pct = typeof progress === 'number' ? Math.round(progress) : null;
     session.syncing = !isLatest;
     session.syncProgress = pct;
+    session.historyState = 'syncing';
     importHistoryMessages(session, messages || []);
+    session.historyMessages = session.syncedChats || 0;
     if (isLatest) {
       session.syncing = false;
       session.syncProgress = 100;
-      console.log(`sync: ${session.sessionId} completado (${session.syncedChats || 0} mensajes importados)`);
+      session.historyState = 'imported';
+      session.historySyncedAt = new Date().toISOString();
+      console.log(`sync: ${session.sessionId} completado (${session.historyMessages} mensajes importados)`);
     }
+    persistHistoryState(session);
     emitSessionUpdate(session.sessionId);
   });
 
@@ -1522,10 +1547,20 @@ async function startSession({ clientId, sessionId, mode = 'normal' }) {
     );
   }
 
+  // Estado del historial ya conocido (persistido) para no perderlo al reiniciar
+  const [[histRow]] = await pool.execute(
+    'SELECT history_state, history_messages, history_synced_at FROM wa_sessions WHERE session_id = ?',
+    [sessionId],
+  );
+
   const session = {
     sessionId,
     clientId,
     mode,
+    historyState: histRow?.history_state || 'none',
+    historyMessages: histRow?.history_messages || 0,
+    historySyncedAt: histRow?.history_synced_at
+      ? new Date(histRow.history_synced_at).toISOString() : null,
     status: 'starting',
     qrDataUrl: null,
     lastError: null,
@@ -1744,7 +1779,8 @@ async function resumeSessions() {
 async function listSessionsByClient(clientId) {
   // Combina BD (todas las que pertenecen al cliente) con runtime (estado vivo).
   const [rows] = await pool.execute(
-    `SELECT session_id, status, phone_number, last_error, created_at, updated_at
+    `SELECT session_id, status, phone_number, last_error, created_at, updated_at,
+            history_state, history_messages, history_synced_at
      FROM wa_sessions WHERE client_id = ? ORDER BY id DESC`,
     [clientId],
   );
@@ -1759,6 +1795,10 @@ async function listSessionsByClient(clientId) {
       qrDataUrl: null,
       lastError: row.last_error,
       connectedNumber: row.phone_number,
+      historyState: row.history_state || 'none',
+      historyMessages: row.history_messages || 0,
+      historySyncedAt: row.history_synced_at
+        ? new Date(row.history_synced_at).toISOString() : null,
       updatedAt: row.updated_at,
     };
   });
