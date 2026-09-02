@@ -70,7 +70,12 @@
                 <a [routerLink]="['/clients', s.clientId]">{{ clientName(s.clientId) }}</a>
               } @else { <span class="dim">—</span> }
             </td>
-            <td><span class="badge {{ statusVariant(s.status) }}">{{ statusLabel(s.status) }}</span></td>
+            <td>
+              <span class="badge {{ statusVariant(s.status) }}">{{ statusLabel(s.status) }}</span>
+              @if (s.syncing) {
+                <span class="badge info sync-badge">Sincronizando{{ s.syncProgress != null ? ' ' + s.syncProgress + '%' : '…' }}</span>
+              }
+            </td>
             <td>{{ s.connectedNumber || '—' }}</td>
             <td>{{ s.mode || '—' }}</td>
             <td class="right">

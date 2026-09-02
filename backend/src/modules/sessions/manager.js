@@ -51,6 +51,9 @@ function serializeSession(session) {
     qrDataUrl: session.qrDataUrl,
     lastError: session.lastError,
     connectedNumber: session.connectedNumber,
+    syncing: Boolean(session.syncing),
+    syncProgress: session.syncProgress ?? null,
+    syncedChats: session.syncedChats || 0,
     updatedAt: session.updatedAt,
   };
 }
@@ -105,13 +108,17 @@ function chatIdentity(jid) {
   return lidToPhone.get(norm) || norm;
 }
 
+// El mismo mensaje puede llegar dos veces (evento en vivo + lote de
+// sincronización al vincular): el UNIQUE de (client_id, wa_message_id) + el
+// ON DUPLICATE KEY no-op lo hacen idempotente.
 function persistChatMessage(clientId, contactJid, entry, conv) {
   const ts = new Date(entry.timestamp);
   pool.execute(
     `INSERT INTO wa_messages
        (client_id, contact_jid, direction, wa_message_id, body, sender_name,
         participant, is_group, has_media, msg_type, file_name, source, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE id = id`,
     [
       clientId, contactJid, entry.direction === 'out' ? 'out' : 'in',
       entry.id || null, entry.body || null, entry.senderName || null,
@@ -127,8 +134,8 @@ function persistChatMessage(clientId, contactJid, entry, conv) {
      ON DUPLICATE KEY UPDATE
        display_name = COALESCE(VALUES(display_name), display_name),
        is_group = VALUES(is_group),
-       last_at = VALUES(last_at),
-       last_body = VALUES(last_body)`,
+       last_at = GREATEST(COALESCE(last_at, VALUES(last_at)), VALUES(last_at)),
+       last_body = IF(VALUES(last_at) >= COALESCE(last_at, VALUES(last_at)), VALUES(last_body), last_body)`,
     [clientId, contactJid, conv.senderName || null, conv.isGroup ? 1 : 0, ts, entry.body || null],
   ).catch(() => {});
 }
@@ -253,6 +260,45 @@ function bumpDailyStat(clientId, direction) {
      ON DUPLICATE KEY UPDATE ${col} = ${col} + 1`,
     [clientId],
   ).catch(() => {}); // best-effort: una métrica nunca frena un mensaje
+}
+
+// --- Importación del historial inicial (lote reciente de WhatsApp) ---
+// Al vincular un número, WhatsApp manda los últimos mensajes de cada chat.
+// Los guardamos para que el panel no arranque vacío. La retención de 7 días
+// se encarga de purgar lo que quede fuera de la ventana.
+const HISTORY_IMPORT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function importHistoryMessages(session, messages) {
+  for (const msg of messages) {
+    try {
+      if (!msg?.message || !msg.key) continue;
+      const ts = Number(msg.messageTimestamp) * 1000;
+      if (!ts || Date.now() - ts > HISTORY_IMPORT_MAX_AGE_MS) continue; // fuera de retención
+      const remoteJid = msg.key.remoteJid;
+      if (!remoteJid) continue;
+      const isGroup = String(remoteJid).endsWith('@g.us');
+      const body = extractText(msg.message);
+      if (!body && !hasMedia(msg.message)) continue;
+      const chatJid = isGroup
+        ? normalizeJid(remoteJid)
+        : normalizeJid(msg.key.senderPn || remoteJid);
+      if (!chatJid) continue;
+
+      recordChatMessage(session.clientId, chatJid, {
+        direction: msg.key.fromMe ? 'out' : 'in',
+        id: msg.key.id || null,
+        body,
+        senderName: msg.pushName || null,
+        participant: isGroup ? normalizeJid(msg.key.participantPn || msg.key.participant) : null,
+        hasMedia: hasMedia(msg.message),
+        msgType: messageType(msg.message),
+        source: msg.key.fromMe ? 'history' : null,
+        timestamp: new Date(ts).toISOString(),
+      }, { senderName: isGroup ? null : (msg.pushName || null), isGroup });
+
+      session.syncedChats = (session.syncedChats || 0) + 1;
+    } catch { /* un mensaje corrupto no rompe la importación */ }
+  }
 }
 
 // --- Acuses de entrega/lectura (ticks de WhatsApp, RAM) ---
@@ -1111,6 +1157,22 @@ async function connectSocket(session) {
         });
       }
     }
+  });
+
+  // Sincronización inicial: al vincular, WhatsApp envía un lote de chats
+  // recientes. Lo importamos al histórico (retención de 7 días) y publicamos
+  // el progreso para que el panel muestre "Sincronizando chats…".
+  sock.ev.on('messaging-history.set', ({ messages, isLatest, progress }) => {
+    const pct = typeof progress === 'number' ? Math.round(progress) : null;
+    session.syncing = !isLatest;
+    session.syncProgress = pct;
+    importHistoryMessages(session, messages || []);
+    if (isLatest) {
+      session.syncing = false;
+      session.syncProgress = 100;
+      console.log(`sync: ${session.sessionId} completado (${session.syncedChats || 0} mensajes importados)`);
+    }
+    emitSessionUpdate(session.sessionId);
   });
 
   // Ticks de WhatsApp (entregado/leído) de NUESTROS mensajes → estado por id

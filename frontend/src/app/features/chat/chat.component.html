@@ -27,6 +27,9 @@
             @if (row.handoffCount > 0) {
               <span class="badge warn">{{ row.handoffCount }} humano</span>
             }
+            @if (row.syncing) {
+              <span class="badge info">Sincronizando{{ row.syncProgress != null ? ' ' + row.syncProgress + '%' : '…' }}</span>
+            }
           </span>
           @if (row.unread > 0) {
             <span class="unread">{{ row.unread }}</span>

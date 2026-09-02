@@ -35,6 +35,8 @@ export interface ClientSessionView {
   sessionId: string;
   status: string;
   connectedNumber: string | null;
+  syncing?: boolean;
+  syncProgress?: number | null;
 }
 
 export interface ScheduleWindow {

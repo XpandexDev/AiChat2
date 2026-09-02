@@ -212,6 +212,9 @@
               <div class="session-row">
                 <span class="id">{{ s.sessionId }}</span>
                 <span class="badge {{ statusVariant(s.status) }}">{{ statusLabel(s.status) }}</span>
+                @if (s.syncing) {
+                  <span class="badge info">Sincronizando chats{{ s.syncProgress != null ? ' ' + s.syncProgress + '%' : '…' }}</span>
+                }
                 @if (s.connectedNumber) { <span class="small">📱 {{ s.connectedNumber }}</span> }
                 <span class="grow"></span>
                 <button class="ghost" (click)="stopSession(s.sessionId)">Parar</button>

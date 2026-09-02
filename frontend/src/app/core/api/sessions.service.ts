@@ -11,6 +11,9 @@ export interface WaSession {
   qrDataUrl: string | null;
   lastError: string | null;
   connectedNumber: string | null;
+  syncing?: boolean;
+  syncProgress?: number | null;
+  syncedChats?: number;
   updatedAt: string;
 }
 

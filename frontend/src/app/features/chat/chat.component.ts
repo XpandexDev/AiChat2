@@ -8,9 +8,9 @@ import { ThreadComponent } from './thread.component';
 import { AvatarComponent } from '../../shared/avatar.component';
 
 /**
- * Conversaciones en vivo: clientes → contactos → hilo.
- * Sin histórico persistente (decisión de producto): seed = ring buffer RAM del
- * backend + eventos socket. El socket ya está abierto por el layout admin.
+ * Conversaciones: clientes → contactos → hilo.
+ * Seed = histórico en BD (retención de 7 días) + eventos socket en vivo.
+ * El socket ya está abierto por el layout admin.
  */
 @Component({
   selector: 'app-chat',
@@ -55,6 +55,8 @@ export class ChatComponent implements OnInit {
           lastAt: convs[0]?.lastAt || '',
           handoffCount: handoffs.filter((h) => h.clientId === c.id).length,
           sessionStatus: live?.status || null,
+          syncing: Boolean(live?.syncing),
+          syncProgress: live?.syncProgress ?? null,
         };
       })
       .sort((a, b) => b.lastAt.localeCompare(a.lastAt));

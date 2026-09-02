@@ -92,7 +92,12 @@
           @for (s of sessions(); track s.sessionId) {
             <tr>
               <td class="mono">{{ s.sessionId }}</td>
-              <td><span class="badge {{ statusVariant(s.status) }}">{{ statusLabel(s.status) }}</span></td>
+              <td>
+                <span class="badge {{ statusVariant(s.status) }}">{{ statusLabel(s.status) }}</span>
+                @if (s.syncing) {
+                  <span class="badge info">Sincronizando chats{{ s.syncProgress != null ? ' ' + s.syncProgress + '%' : '…' }}</span>
+                }
+              </td>
               <td>{{ s.connectedNumber || '—' }}</td>
             </tr>
           }
