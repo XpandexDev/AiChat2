@@ -6,6 +6,7 @@ const { requireAdmin } = require('../../middleware/auth');
 const { auditLog } = require('../../middleware/audit');
 const { invalidateApiKeyCache } = require('../../middleware/api-key');
 const { invalidateEventsConfig } = require('../events/dispatcher');
+const whitelist = require('../whitelist/service');
 
 const router = express.Router();
 
@@ -84,6 +85,54 @@ router.post('/:id/password', async (req, res) => {
     return res.json({ ok: true, passwordConfigured: updated.passwordConfigured });
   } catch (error) {
     if (error.code === 'VALIDATION') return res.status(400).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Whitelist (lista blanca activable) del cliente ---
+router.get('/:id/whitelist', async (req, res) => {
+  try {
+    return res.json(await whitelist.getState(Number(req.params.id)));
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch('/:id/whitelist', async (req, res) => {
+  const id = Number(req.params.id);
+  const enabled = req.body?.enabled === true || req.body?.enabled === 'true';
+  try {
+    const state = await whitelist.setEnabled(id, enabled);
+    auditLog(req.adminId, 'client.whitelist_toggle', 'client', String(id), { enabled }, req).catch(() => {});
+    return res.json(state);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/whitelist', async (req, res) => {
+  const id = Number(req.params.id);
+  const jid = sessionsManager.normalizeJid(req.body?.number);
+  if (!jid) return res.status(400).json({ error: 'Numero invalido. Usa formato internacional, p.ej. 34600111222' });
+  try {
+    const state = await whitelist.add(id, jid, req.body?.note);
+    auditLog(req.adminId, 'client.whitelist_add', 'client', String(id), { number: jid.split('@')[0] }, req).catch(() => {});
+    return res.json(state);
+  } catch (error) {
+    if (error.code === 'VALIDATION') return res.status(400).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/:id/whitelist', async (req, res) => {
+  const id = Number(req.params.id);
+  const jid = sessionsManager.normalizeJid(req.query?.number || req.body?.number);
+  if (!jid) return res.status(400).json({ error: 'Numero invalido' });
+  try {
+    const state = await whitelist.remove(id, jid);
+    auditLog(req.adminId, 'client.whitelist_remove', 'client', String(id), { number: jid.split('@')[0] }, req).catch(() => {});
+    return res.json(state);
+  } catch (error) {
     return res.status(500).json({ error: error.message });
   }
 });

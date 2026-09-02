@@ -24,7 +24,7 @@ const openapiSpec = {
   openapi: '3.1.0',
   info: {
     title: 'AiChat API',
-    version: '1.1.0',
+    version: '1.2.0',
     description: [
       'API de la plataforma de chatbots de WhatsApp de Xpandex.',
       '',
@@ -390,6 +390,56 @@ const openapiSpec = {
           200: { description: 'OK', content: { 'application/json': { example: { id: '120363…@g.us' } } } },
           401: err('API key ausente o inválida'),
           409: err('Sesión no conectada'),
+        },
+      },
+    },
+    '/whitelist': {
+      get: {
+        summary: 'Lista blanca (estado y números)',
+        description: 'Si `enabled` es true, el bot SOLO responde a los números de la lista. La blacklist tiene prioridad sobre la whitelist.',
+        tags: ['Reglas'],
+        responses: {
+          200: {
+            description: 'OK',
+            content: { 'application/json': { example: { enabled: true, entries: [{ contactJid: '34600111222@s.whatsapp.net', note: 'pruebas', createdAt: '2026-09-02T09:00:00.000Z' }] } } },
+          },
+          401: err('API key ausente o inválida'),
+        },
+      },
+      put: {
+        summary: 'Activar o desactivar la lista blanca',
+        tags: ['Reglas'],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { example: { enabled: true }, schema: { type: 'object', required: ['enabled'], properties: { enabled: { type: 'boolean' } } } } },
+        },
+        responses: {
+          200: { description: 'OK', content: { 'application/json': { example: { enabled: true, entries: [] } } } },
+          401: err('API key ausente o inválida'),
+        },
+      },
+      post: {
+        summary: 'Añadir un número a la lista blanca',
+        tags: ['Reglas'],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { example: { number: '34600111222', note: 'pruebas' }, schema: { type: 'object', required: ['number'], properties: { number: { type: 'string' }, note: { type: 'string' } } } } },
+        },
+        responses: {
+          201: { description: 'Añadido', content: { 'application/json': { example: { enabled: true, entries: [{ contactJid: '34600111222@s.whatsapp.net', note: 'pruebas' }] } } } },
+          400: err('number inválido'),
+          401: err('API key ausente o inválida'),
+        },
+      },
+    },
+    '/whitelist/{number}': {
+      delete: {
+        summary: 'Quitar un número de la lista blanca',
+        tags: ['Reglas'],
+        parameters: [{ name: 'number', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: { description: 'OK', content: { 'application/json': { example: { enabled: true, entries: [] } } } },
+          401: err('API key ausente o inválida'),
         },
       },
     },
