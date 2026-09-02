@@ -24,7 +24,7 @@ const openapiSpec = {
   openapi: '3.1.0',
   info: {
     title: 'AiChat API',
-    version: '1.2.0',
+    version: '1.3.0',
     description: [
       'API de la plataforma de chatbots de WhatsApp de Xpandex.',
       '',
@@ -33,7 +33,7 @@ const openapiSpec = {
       '',
       '**Autenticación**: cabecera `Authorization: Bearer xpk_…` (o `X-Api-Key`).',
       '',
-      '**Límites**: 120 peticiones/minuto por key · archivos hasta 16MB · las conversaciones son un buffer reciente en memoria, no un histórico persistente.',
+      '**Límites**: 120 peticiones/minuto por key · archivos hasta 16MB · el histórico de conversaciones se conserva **7 días** (retención configurable) y luego se purga.',
       '',
       '## Webhooks de eventos',
       '',
@@ -222,7 +222,7 @@ const openapiSpec = {
     '/conversations': {
       get: {
         summary: 'Conversaciones recientes',
-        description: 'Buffer reciente en memoria (últimos ~50 mensajes por conversación). NO es un histórico persistente: un reinicio del servicio lo vacía.',
+        description: 'Conversaciones del histórico (ventana de retención de 7 días), más recientes primero.',
         tags: ['Conversaciones'],
         responses: {
           200: {
@@ -243,13 +243,14 @@ const openapiSpec = {
     },
     '/conversations/{jid}/messages': {
       get: {
-        summary: 'Hilo reciente con un contacto',
+        summary: 'Hilo de mensajes con un contacto',
+        description: 'Histórico dentro de la ventana de retención (7 días). Pagina hacia atrás con `before` (timestamp ISO) y `limit` (máx. 500).',
         tags: ['Conversaciones'],
-        parameters: [{
-          name: 'jid', in: 'path', required: true,
-          schema: { type: 'string' },
-          description: 'Número (34600111222) o JID del contacto/grupo',
-        }],
+        parameters: [
+          { name: 'jid', in: 'path', required: true, schema: { type: 'string' }, description: 'Número (34600111222) o JID del contacto/grupo' },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 100, maximum: 500 } },
+          { name: 'before', in: 'query', schema: { type: 'string', format: 'date-time' }, description: 'Devuelve mensajes anteriores a esta fecha (paginación)' },
+        ],
         responses: {
           200: {
             description: 'OK',

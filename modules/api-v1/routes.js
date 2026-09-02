@@ -160,36 +160,42 @@ router.put('/events-webhook', async (req, res) => {
 });
 
 // --- Conversaciones (buffer RAM: contexto reciente, NO histórico persistente) ---
-router.get('/conversations', (req, res) => {
-  const list = manager.getRecentConversations(req.clientId).map((c) => ({
-    contactJid: c.contactJid,
-    name: c.senderName,
-    isGroup: c.isGroup,
-    lastAt: c.lastAt,
-    lastMessage: c.messages[c.messages.length - 1]?.body || '',
-  }));
-  return res.json({ conversations: list });
+router.get('/conversations', async (req, res) => {
+  try {
+    const list = (await manager.listConversations(req.clientId)).map((c) => ({
+      contactJid: c.contactJid,
+      name: c.senderName,
+      isGroup: c.isGroup,
+      lastAt: c.lastAt,
+      lastMessage: c.lastBody || '',
+    }));
+    return res.json({ conversations: list });
+  } catch (err) {
+    return mapError(res, err);
+  }
 });
 
-router.get('/conversations/:jid/messages', (req, res) => {
+router.get('/conversations/:jid/messages', async (req, res) => {
   const jid = manager.normalizeJid(req.params.jid);
   if (!jid) return fail(res, 400, 'validation', 'jid inválido');
-  const conv = manager.getRecentConversations(req.clientId)
-    .find((c) => c.contactJid === jid);
-  if (!conv) return fail(res, 404, 'not_found', 'Sin conversación reciente con ese contacto (el buffer no es histórico)');
-  return res.json({
-    contactJid: conv.contactJid,
-    name: conv.senderName,
-    isGroup: conv.isGroup,
-    messages: conv.messages.map((m) => ({
-      direction: m.direction,
-      id: m.id,
-      body: m.body,
-      senderName: m.senderName || null,
-      hasMedia: Boolean(m.hasMedia),
-      timestamp: m.timestamp,
-    })),
-  });
+  try {
+    const convs = await manager.listConversations(req.clientId);
+    const conv = convs.find((c) => c.contactJid === jid);
+    const messages = await manager.listMessages(req.clientId, jid, {
+      limit: req.query.limit, before: req.query.before || null,
+    });
+    if (!conv && !messages.length) {
+      return fail(res, 404, 'not_found', 'Sin conversación con ese contacto en la ventana de retención (7 días)');
+    }
+    return res.json({
+      contactJid: jid,
+      name: conv?.senderName || null,
+      isGroup: conv?.isGroup || false,
+      messages,
+    });
+  } catch (err) {
+    return mapError(res, err);
+  }
 });
 
 // --- Perfil de contacto ---

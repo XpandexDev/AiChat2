@@ -9,6 +9,7 @@ const { Server } = require('socket.io');
 const config = require('./config');
 const { runMigrations } = require('./db/migrate');
 const { bootstrapFirstAdmin } = require('./db/bootstrap');
+const { startRetentionJob, RETENTION_DAYS } = require('./lib/retention');
 const authService = require('./modules/auth/service');
 const clientAuthService = require('./modules/client-auth/service');
 
@@ -189,6 +190,10 @@ async function startServer() {
   sessionsManager.resumeSessions().catch((err) => {
     console.error('resumeSessions error:', err.message);
   });
+
+  // Purga del histórico de conversaciones (retención configurable, 7d por defecto)
+  startRetentionJob();
+  console.log(`Retención de mensajes: ${RETENTION_DAYS} días`);
 
   server.listen(config.PORT, () => {
     console.log(`Backend listo en puerto ${config.PORT}`);
