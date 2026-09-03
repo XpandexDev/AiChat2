@@ -39,7 +39,8 @@ async function isBlockedByWhitelist(clientId, contactJid) {
     [contactJid, clientId],
   );
   const row = rows[0];
-  if (!row || !row.whitelist_enabled) return false;
+  // OJO: la columna viene aliasada como `enabled`, no como `whitelist_enabled`.
+  if (!row || !row.enabled) return false;
   return !row.allowed;
 }
 

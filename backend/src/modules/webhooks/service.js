@@ -141,6 +141,14 @@ async function forwardIncoming(clientId, payload, extras = {}) {
     }
     return out;
   }
+  // n8n contestó 200 pero sin `to` + (`text`|`form`): el bot se queda mudo. Sin
+  // esta traza el caso es INDIAGNOSTICABLE (no hay excepción ni last_error), que
+  // es justo lo que ocurrió el 2026-09-03 con los "hola" sin respuesta.
+  console.error(
+    `[webhook] cliente ${clientId}: respuesta 200 SIN formato {to,text|form} → el bot no responde. Cuerpo: ${
+      JSON.stringify(response?.data ?? null).slice(0, 500)
+    }`,
+  );
   return null;
 }
 

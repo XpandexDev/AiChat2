@@ -1237,13 +1237,18 @@ async function connectSocket(session) {
       // contactJid — por eso viaja también en el payload (el 'from' puede ser @lid
       // y no casaría con el 'to' normalizado de los mensajes salientes).
       const replyJid = remoteJid;
-      const contactJid = normalizeJid(msg.key.senderPn || remoteJid);
+      let contactJid = normalizeJid(msg.key.senderPn || remoteJid);
 
       // Si este 1:1 llega direccionado por @lid, aprendemos el mapeo al teléfono
       // real para que las RESPUESTAS (que van al @lid) caigan en el mismo hilo.
       if (!isGroup && String(remoteJid || '').endsWith('@lid') && msg.key.senderPn) {
         rememberLid(normalizeJid(remoteJid), contactJid);
       }
+
+      // Sin senderPn el contactJid se queda en @lid, y las listas (blanca/negra)
+      // están escritas por teléfono: resolvemos con el mapeo aprendido para no
+      // silenciar por error a un número que SÍ está en la lista blanca.
+      if (!isGroup) contactJid = chatIdentity(contactJid);
 
       // Identidad del HILO en el chat del panel: en grupos, el grupo entero;
       // en 1:1, el teléfono del contacto.
@@ -1354,7 +1359,10 @@ async function connectSocket(session) {
       } catch (e) {
         blockedByWhitelist = false;
       }
-      if (blockedByWhitelist) continue;
+      if (blockedByWhitelist) {
+        console.error(`[whitelist] cliente ${session.clientId}: ${contactJid} NO está en la lista blanca → el bot no responde`);
+        continue;
+      }
 
       // Handoff: si el contacto está en modo humano, el bot calla — no reenviamos
       // a n8n ni auto-respondemos. El panel ya ha visto el mensaje (emit de arriba)
@@ -1478,8 +1486,10 @@ async function connectSocket(session) {
           }
         }
       } catch (error) {
+        const detail = webhooks.formatError(error);
+        console.error(`[webhook] cliente ${session.clientId} ${contactJid}: fallo al reenviar a n8n → ${detail}`);
         updateSession(session.sessionId, {
-          lastError: `Error enviando webhook entrante: ${webhooks.formatError(error)}`,
+          lastError: `Error enviando webhook entrante: ${detail}`,
         });
       }
     }
