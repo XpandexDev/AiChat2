@@ -102,14 +102,19 @@ async function forwardIncoming(clientId, payload, extras = {}) {
     timeout: 60000,
   });
 
-  if (response?.data?.to && (response.data.text || response.data.form)) {
+  // Un handoff SIN texto es válido: n8n puede pedir que la conversación pase a
+  // una persona sin enviar nada al contacto (p.ej. cuando ya estaba derivada y
+  // solo hay que mantenerla ahí). Antes se exigía texto o formulario y la
+  // respuesta se descartaba ENTERA, perdiendo el handoff: una clienta con una
+  // incidencia de pago se quedó sin derivar por esto (visto en logs 2026-09-03).
+  const wantsHandoff = response?.data?.handoff === true || response?.data?.handoff === 'true';
+
+  if (response?.data?.to && (response.data.text || response.data.form || wantsHandoff)) {
     const out = {
       to: String(response.data.to),
       text: response.data.text ? String(response.data.text) : '',
     };
-    // Señal de handoff: si n8n la incluye, la propagamos sin romper el contrato
-    // {to,text}. El handoff SIEMPRE acompaña un texto (el "te atiende una persona").
-    if (response.data.handoff === true || response.data.handoff === 'true') {
+    if (wantsHandoff) {
       out.handoff = true;
       out.handoff_motivo = response.data.handoff_motivo ? String(response.data.handoff_motivo) : null;
       out.handoff_resumen = response.data.handoff_resumen ? String(response.data.handoff_resumen) : null;
