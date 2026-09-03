@@ -44,6 +44,10 @@ git -C "$ROOT_DIR" bundle create "$BUNDLE_LOCAL" \
   "$REMOTE_HEAD..refs/heads/$DEPLOY_BRANCH"
 
 echo "==> Enviando bundle ($(du -h "$BUNDLE_LOCAL" | cut -f1))"
+# El bundle del deploy anterior queda en /tmp a nombre de www; con
+# fs.protected_regular ni root puede sobrescribirlo en un directorio sticky,
+# así que lo borramos antes de subir el nuevo.
+ssh -o ConnectTimeout=15 "$VPS_HOST" 'rm -f /tmp/aichat-deploy.bundle'
 scp -o ConnectTimeout=15 "$BUNDLE_LOCAL" "$VPS_HOST:/tmp/aichat-deploy.bundle"
 
 echo "==> Desplegando en el VPS"
