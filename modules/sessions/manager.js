@@ -96,11 +96,35 @@ const chatBuffer = new Map();
 // el entrante (que agrupamos por teléfono) → chats partidos en dos.
 const lidToPhone = new Map();
 
-function rememberLid(lidJid, phoneJid) {
+function rememberLid(lidJid, phoneJid, clientId = null) {
   if (!lidJid || !phoneJid || lidJid === phoneJid) return;
+  const known = lidToPhone.get(lidJid);
   lidToPhone.set(lidJid, phoneJid);
   if (lidToPhone.size > 2000) {
     lidToPhone.delete(lidToPhone.keys().next().value);
+  }
+  // Persistimos solo lo que no sabíamos: el mapa se reconstruye al arrancar y
+  // sin esto un reinicio deja pasar mensajes @lid por delante del handoff.
+  if (known === phoneJid) return;
+  pool.execute(
+    `INSERT INTO wa_lid_map (lid_jid, phone_jid, client_id) VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE phone_jid = VALUES(phone_jid), client_id = VALUES(client_id)`,
+    [lidJid, phoneJid, clientId],
+  ).catch((err) => console.error('rememberLid persist error:', err.message));
+}
+
+// Reconstruye el mapa @lid -> teléfono al arrancar. Sin esto, tras cada
+// despliegue las identidades @lid vuelven a ser desconocidas hasta que WhatsApp
+// reenvía un senderPn, y en esa ventana el handoff no las reconoce.
+async function loadLidMap() {
+  try {
+    const [rows] = await pool.query(
+      'SELECT lid_jid, phone_jid FROM wa_lid_map ORDER BY updated_at DESC LIMIT 2000',
+    );
+    for (const r of rows) lidToPhone.set(r.lid_jid, r.phone_jid);
+    if (rows.length) console.log(`[lid] mapa de identidades cargado: ${rows.length} entradas`);
+  } catch (err) {
+    console.error('loadLidMap error:', err.message);
   }
 }
 
@@ -1242,7 +1266,7 @@ async function connectSocket(session) {
       // Si este 1:1 llega direccionado por @lid, aprendemos el mapeo al teléfono
       // real para que las RESPUESTAS (que van al @lid) caigan en el mismo hilo.
       if (!isGroup && String(remoteJid || '').endsWith('@lid') && msg.key.senderPn) {
-        rememberLid(normalizeJid(remoteJid), contactJid);
+        rememberLid(normalizeJid(remoteJid), contactJid, session.clientId);
       }
 
       // Sin senderPn el contactJid se queda en @lid, y las listas (blanca/negra)
@@ -1370,6 +1394,16 @@ async function connectSocket(session) {
       let handoffPaused = false;
       try {
         handoffPaused = await handoff.isPaused(session.clientId, contactJid);
+        // Doble identidad: si WhatsApp direccionó por @lid y aún no conocemos su
+        // teléfono, el contactJid no casa con la derivación (guardada por
+        // teléfono) y el bot contestaría a alguien que ya está con una persona.
+        // Solo hace la segunda consulta en ese caso concreto.
+        if (!handoffPaused && !isGroup) {
+          const rawJid = normalizeJid(replyJid);
+          if (rawJid && rawJid !== contactJid) {
+            handoffPaused = await handoff.isPaused(session.clientId, rawJid);
+          }
+        }
       } catch (e) {
         handoffPaused = false;
       }
@@ -1749,6 +1783,10 @@ process.on('exit', () => {
 
 // Auto-resume sesiones que estaban activas antes del último restart de Passenger.
 async function resumeSessions() {
+  // Antes de reconectar: recuperamos las identidades @lid conocidas, para que el
+  // primer mensaje tras el arranque ya case con handoff y listas.
+  await loadLidMap();
+
   const gotLock = await tryAcquireResumerLock();
   if (!gotLock) {
     console.log('Another worker holds the resumer lock — skipping session resume');
